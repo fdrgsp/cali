@@ -1,7 +1,7 @@
 # Adding CASCADE spike inference to `cali`
 
 **Branch**: `cascade` (branched from `main` at `336e7b5`)
-**Status**: P1/P2a and prerequisite P2b/P2c implemented; pinned CASCADE package, P4 verified model cache/download CLI, P3a pretrained reference adapter, experimental P3b cached service, and P5 headless runner/persistence/export integration implemented; controlled Step 10 extraction/storage measurements collected and two integration bugs fixed; schema-11 lossless trace-array codec implemented; schema-13 byte-shuffle codec repairs the complete-image storage budget with exact samples; P6a shared ROI calculations, CASCADE ROI metrics, P6b method-bound FOV populations, P6c1 method-aware exports, P6c2a plot registry/ROI consumers, P6c2b population/burst/matrix consumers, P6c2c evoked/sorted/PCA consumers, P6c2d aligned comparisons and P6d full-runner parity/failure isolation implemented; schema-12 population coordinates added; headless CASCADE extraction and spike analysis enabled; controlled full-analysis and 100 × 6000 complete-image measurements with database audits complete, default single-worker FOV startup optimized; versioned byte-shuffle reader/migration and installed-wheel consumer checks complete; schema-14 method-qualified noise QC summaries, exports and advisory batch checks implemented; P8 GUI settings/controls, cancellable background model download, timing-source/resolved-discard previews and stored-results selection implemented behind the extraction release gate; camera-sized single-worker CPU/MPS memory measurements complete; dedicated remote installed-wheel CASCADE CI passed on Python 3.11/3.13; remaining release evidence (memory-budget acceptance, licensing review) and GUI extraction exposure pending; real-plate benchmark and CUDA validation deferred, upstream packaging submission dropped (see Scope decisions, 2026-10-05)
+**Status**: P1/P2a and prerequisite P2b/P2c implemented; pinned CASCADE package, P4 verified model cache/download CLI, P3a pretrained reference adapter, experimental P3b cached service, and P5 headless runner/persistence/export integration implemented; controlled Step 10 extraction/storage measurements collected and two integration bugs fixed; schema-11 lossless trace-array codec implemented; schema-13 byte-shuffle codec repairs the complete-image storage budget with exact samples; P6a shared ROI calculations, CASCADE ROI metrics, P6b method-bound FOV populations, P6c1 method-aware exports, P6c2a plot registry/ROI consumers, P6c2b population/burst/matrix consumers, P6c2c evoked/sorted/PCA consumers, P6c2d aligned comparisons and P6d full-runner parity/failure isolation implemented; schema-12 population coordinates added; headless CASCADE extraction and spike analysis enabled; controlled full-analysis and 100 × 6000 complete-image measurements with database audits complete, default single-worker FOV startup optimized; versioned byte-shuffle reader/migration and installed-wheel consumer checks complete; schema-14 method-qualified noise QC summaries, exports and advisory batch checks implemented; P8 GUI settings/controls, cancellable background model download, timing-source/resolved-discard previews and stored-results selection implemented behind the extraction release gate; camera-sized single-worker CPU/MPS memory measurements complete; dedicated remote installed-wheel CASCADE CI passed on Python 3.11/3.13 and combined macOS/Windows suites passed on Python 3.11/3.12/3.13; remaining release evidence (memory-budget acceptance, licensing review) and GUI extraction exposure pending; real-plate benchmark and CUDA validation deferred, upstream packaging submission dropped (see Scope decisions, 2026-10-05)
 **Date**: 2026-10-10
 
 ---
@@ -11,8 +11,8 @@
 - With the user's authorization, the completed `cascade` commits were pushed and
   `ci.yml` was dispatched on the branch. Both dedicated Ubuntu installed-wheel
   CASCADE jobs passed on Python **3.11 and 3.13** at
-  `99a2c351a3b737f42b33752bacb3bfb02b6b6883`:
-  [CI run 38062573664](https://github.com/fdrgsp/cali/actions/runs/38062573664).
+  `fd7a8e3164cad4fc1977a38d31cd1723d259f3a3`:
+  [CI run 38064400449](https://github.com/fdrgsp/cali/actions/runs/38064400449).
   Each job passed **524 tests, 1 optional case skipped**, covering the base wheel
   without Torch/CASCADE, exact source pin, native OASIS regression, pretrained
   reference/cached/service inference, extraction/persistence/offline reuse,
@@ -33,7 +33,8 @@
 - `cascade_remote_ci_validation.json` records the tested revision, workflow and
   reference identities, both successful job URLs/counts and the earlier failures.
   The dedicated jobs first passed at `a726ea0` and passed again after the platform
-  fixes at `99a2c35`. The broader first run was cancelled to release its logs after
+  fixes at `99a2c35` and the CPU Cellpose smoke fix at `fd7a8e3`.
+  The broader first run was cancelled to release its logs after
   more than 15 minutes. Windows was progressing slowly and reported two failures;
   all three native macOS Qt jobs stopped after the same plot-selection test.
 - ZIP validation now checks the original member name before `ZipInfo` normalizes
@@ -45,8 +46,23 @@
   1 optional case skipped in 18.87 s**; repository hooks, including mypy, pass.
   Its test-modified database fixture was backed up with verified bytes and restored.
   Full platform CI now uses the locally validated offscreen Qt platform and fixed
-  single CPU threads. Full macOS/Windows jobs are still running on the corrected
-  revision while this record is prepared.
+  single CPU threads. Native GUI coverage also passed **35 tests in 5.42 s**.
+- The corrected macOS suites completed all other tests, but the real Cellpose
+  smoke test automatically selected MPS and returned no ROIs. That smoke now
+  explicitly uses CPU and retains its real-model, persisted nonempty-detection
+  assertions. It passed locally in **120.26 s**. Production detection code was
+  not changed. A manual macOS-only matrix rerun tests this change without
+  cancelling the existing Windows jobs; ordinary CI still tests both platforms.
+  The entire scoped rerun passed: macOS Python **3.11/3.12/3.13** each passed
+  **2428 tests, 17 skipped**, including real CPU Cellpose; both dedicated CASCADE
+  wheel jobs and the manifest check passed too. Windows Python **3.11/3.12/3.13**
+  each passed **2393 tests, 52 skipped** at `99a2c35` in
+  [the earlier full run](https://github.com/fdrgsp/cali/actions/runs/38062573664).
+  Results record each tested revision: the final change affects a test
+  already skipped on Windows and the manual rerun matrix, with no further
+  production-code changes; both revisions have the same `src` Git tree.
+  This completes combined platform acceptance using evidence from two runs;
+  the earlier full run retains its pre-fix macOS Cellpose failures.
 - The dedicated remote CI gate is complete. Normal GUI CASCADE extraction
   continues to wait for the accepted memory scope/budget and the project's
   licensing review before distribution; cached inference remains opt-in.
