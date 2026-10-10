@@ -11,6 +11,8 @@ from cali.extraction._frame_window import ExtractionFrameWindow
 from cali.extraction._spike_inference import InferenceCancelled, OasisBackend
 from cali.sqlmodel import FOV, ROI, AnalysisSettings, ExtractionSettings
 
+from .fixtures.oasis_pre_refactor_reference import LegacyOasisReference
+
 
 def _source_data() -> tuple[np.ndarray, np.ndarray]:
     rng = np.random.default_rng(42)
@@ -24,8 +26,9 @@ def _source_data() -> tuple[np.ndarray, np.ndarray]:
 
 @pytest.mark.parametrize("case_index", [0, 1])
 def test_oasis_matches_pre_refactor_extraction_fixture(case_index: int) -> None:
-    # Captured before moving OASIS out of _process_roi_trace. Covers estimated
-    # and fixed AR coefficients, neuropil correction, inline metrics and flags.
+    # The archived values were captured on macOS. The frozen original method
+    # supplies an exact native-platform oracle (libm/BLAS differ across hosts).
+    # Covers estimated/fixed AR coefficients, neuropil, inline metrics and flags.
     cases = json.loads(
         (Path(__file__).parent / "fixtures/oasis_extraction_baseline.json").read_text()
     )
@@ -34,6 +37,23 @@ def test_oasis_matches_pre_refactor_extraction_fixture(case_index: int) -> None:
     settings = ExtractionSettings(
         decay_constant=expected["tau"], dff_window=5, frame_rate=10
     )
+    legacy = LegacyOasisReference()._process_roi_trace(
+        data,
+        [],
+        "baseline",
+        settings,
+        AnalysisSettings(frame_rate=10),
+        7,
+        mask,
+        25.5,
+        (np.arange(256) * 100.0).tolist(),
+        "ms",
+        ~mask,
+        0.7,
+    )
+    assert legacy is not None
+    legacy_trace, legacy_analysis, *legacy_flags = legacy
+    assert legacy_analysis is not None
     runner = ExtractionRunner()
     parts = runner._compute_roi_dff(data, [], "baseline", settings, 7, mask, ~mask, 0.7)
     assert parts is not None
@@ -58,20 +78,15 @@ def test_oasis_matches_pre_refactor_extraction_fixture(case_index: int) -> None:
     assert actual is not None
     trace, analysis, active, stimulated, size, units = actual
     assert analysis is not None
-    for name, value in expected["traces"].items():
+    for name, value in vars(legacy_trace).items():
         actual_value = getattr(trace, name)
         if isinstance(value, list):
             np.testing.assert_allclose(actual_value, value, rtol=0, atol=0)
         else:
             assert actual_value == value
-    for name, value in expected["analysis"].items():
+    for name, value in vars(legacy_analysis).items():
         assert getattr(analysis, name) == value
-    assert (active, stimulated, size, units) == (
-        expected["active"],
-        expected["stimulated"],
-        expected["size"],
-        expected["units"],
-    )
+    assert [active, stimulated, size, units] == legacy_flags
     if expected["tau"]:
         g = (float(np.exp(-1 / ((256 / 25.5) * expected["tau"]))),)
         sn = GetSn(parts.dff, range_ff=[0.25, 0.5], method="median")
