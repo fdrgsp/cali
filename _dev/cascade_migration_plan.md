@@ -32,6 +32,9 @@
   passed **2447 tests, 17 skipped** on each macOS suite, **2412 tests, 52 skipped**
   on each Windows suite and **537 tests, 1 skipped** in each dedicated job. These
   results cover the respective recorded revisions before this cache-status change.
+- [Cache-status CI run 38085045144](https://github.com/fdrgsp/cali/actions/runs/38085045144)
+  tests `01cc30dcbd495b174e84f6611d6563a9e6b51bdf` with `platforms=all`; outcome
+  pending. Both preceding runs completed before dispatch.
 
 ## P8 fix — model choices on a fresh install (2026-10-10)
 

@@ -951,6 +951,14 @@
       "verified": "/tmp/cali-cache-status-verified.png",
       "reviewed": true
     },
-    "action_button_geometry_checked_with_wrapped_details": true
+    "action_button_geometry_checked_with_wrapped_details": true,
+    "remote_ci_followup": {
+      "run_id": 38085045144,
+      "url": "https://github.com/fdrgsp/cali/actions/runs/38085045144",
+      "tested_revision": "01cc30dcbd495b174e84f6611d6563a9e6b51bdf",
+      "platforms": "all",
+      "outcome_pending": true,
+      "scope": "Full macOS/Windows Python 3.11/3.12/3.13 and installed base/optional cache-state, action-layout and pretrained GUI acceptance checks"
+    }
   }
 }
