@@ -154,6 +154,14 @@ to an immutable commit. The fork fixes package discovery and warning-producing i
 its inference algorithm and declared runtime dependencies remain unchanged. cali loads
 the optional package only on use and verifies its source files against that pin.
 
+The GUI's **Setup instructions...** action shows the checkout command above and an
+alternative for an installed wheel. The wheel command uses `uv pip install --python`
+with the running GUI's Python executable and the exact pinned CascadeTorch source.
+It also provides a model-download command using that same Python environment.
+Commands are quoted for Windows PowerShell or a POSIX terminal; the dialog only
+shows selectable plain-text instructions. Restart cali after installation. When using `uv sync`, keep
+any Cellpose extra flags you need, then launch with `uv run cali`.
+
 OASIS 0.2.0 still provides calcium denoising. The checkout's uv configuration builds it
 from source with Cython 3.0, which supports Python 3.13 and compiles the unchanged source.
 The macOS SDK settings above still apply when needed. CascadeTorch and OASIS are separate
@@ -183,7 +191,7 @@ unavailable models stay selected and fail clearly. **Download model**
 downloads and verifies the explicitly chosen model in the background, with status,
 cancellation and retry controls. Cancellation waits for the current network
 operation; incomplete models are never published. Closing the window also requests
-cancellation. **Install package...** provides dependency installation and CLI
+cancellation. **Setup instructions...** provides dependency installation and CLI
 instructions; selecting a model never downloads weights or installs packages.
 After verification, model details show whether its rate matches the configured
 acquisition rate within the inference tolerance of 1%. This guidance updates when

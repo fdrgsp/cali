@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 import shlex
+import sys
 from threading import Event
 from typing import TYPE_CHECKING
 
-from qtpy.QtCore import QEvent, Signal, Slot
+from qtpy.QtCore import QEvent, Qt, Signal, Slot
 from qtpy.QtWidgets import (
     QComboBox,
     QFormLayout,
@@ -35,6 +36,13 @@ CASCADE_GUI_GATE = (
     "CASCADE extraction is awaiting the GUI release checks. "
     "Stored CASCADE results can be viewed without running inference."
 )
+
+
+def _terminal_command(arguments: list[str]) -> str:
+    """Quote commands for PowerShell on Windows and POSIX shells elsewhere."""
+    if sys.platform == "win32":
+        return "& " + " ".join("'" + arg.replace("'", "''") + "'" for arg in arguments)
+    return shlex.join(arguments)
 
 
 class _OasisOutputGroup(QGroupBox):
@@ -111,7 +119,12 @@ class _SpikeOutputWidget(QGroupBox):
             self._device.addItem(label, device)
         self._refresh = QPushButton("Refresh models", self)
         self._verify = QPushButton("Verify model", self)
-        self._install = QPushButton("Install package...", self)
+        self._install = QPushButton("Setup instructions...", self)
+        self._install.setToolTip(
+            "Show package-installation and model-download commands for this "
+            "Python environment. Copy commands into your terminal, then restart "
+            "cali after installation."
+        )
         self._download = QPushButton("Download model", self)
         self._download.setToolTip(
             "Download the explicitly chosen model to the local cache and verify it. "
@@ -414,9 +427,22 @@ class _SpikeOutputWidget(QGroupBox):
 
     def _show_install_instructions(self) -> None:
         from cali._cascade_models import cascade_model_dir
+        from cali._cascade_package import CASCADE_PACKAGE_URL
 
-        command = shlex.join(
+        install_command = _terminal_command(
             [
+                "uv",
+                "pip",
+                "install",
+                "--python",
+                sys.executable,
+                f"CascadeTorch @ {CASCADE_PACKAGE_URL}",
+            ]
+        )
+        command = _terminal_command(
+            [
+                sys.executable,
+                "-m",
                 "cali",
                 "cascade-download",
                 self._model.currentText().strip() or "<model-name>",
@@ -424,15 +450,35 @@ class _SpikeOutputWidget(QGroupBox):
                 str(cascade_model_dir()),
             ]
         )
-        QMessageBox.information(
-            self,
-            "CASCADE Installation",
-            "Install the optional inference dependency:\n"
-            "python -m pip install 'cali[cascade]'\n\n"
-            f"Download and verify the chosen model:\n{command}\n\n"
-            "Then refresh the local models. Selecting CASCADE never downloads "
-            "weights automatically or falls back to OASIS.",
+        terminal = "Windows PowerShell" if sys.platform == "win32" else "your terminal"
+        instructions = (
+            f"Run the commands below in {terminal}.\n\n"
+            "From a cali development checkout:\n"
+            "uv sync --extra cascade\n"
+            "Keep any Cellpose extra flags you use, then launch with uv run cali.\n\n"
+            "For an installed cali wheel, install the pinned inference dependency "
+            "in this GUI's Python environment:\n"
+            f"{install_command}\n\n"
+            "Restart cali after installing. Then choose a model and use Download "
+            "model in the GUI, or download and verify it with:\n"
+            f"{command}\n\n"
+            "After a CLI download, use Refresh models and Verify model in the GUI."
         )
+        dialog = QMessageBox(
+            QMessageBox.Icon.Information,
+            "CASCADE Setup",
+            "CASCADE setup instructions",
+            QMessageBox.StandardButton.Ok,
+            self,
+        )
+        dialog.setTextFormat(Qt.TextFormat.PlainText)
+        dialog.setInformativeText(instructions)
+        dialog.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
+        dialog.setTextInteractionFlags(
+            Qt.TextInteractionFlag.TextSelectableByMouse
+            | Qt.TextInteractionFlag.TextSelectableByKeyboard
+        )
+        dialog.exec()
 
     def _verify_model(self) -> None:
         from cali._cascade_models import CascadeModelError, load_cascade_model

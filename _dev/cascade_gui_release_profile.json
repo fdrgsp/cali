@@ -425,7 +425,7 @@
       "platforms": "macos",
       "scope": "Manifest, installed base/optional CASCADE launcher and pretrained checks, macOS full suites on Python 3.11/3.12/3.13",
       "dispatched": true,
-      "outcome_pending": true,
+      "outcome_pending": false,
       "separate_concurrency_group_preserves_full_platform_windows_run": 38068833375,
       "dedicated_jobs_passed": true,
       "dedicated_jobs": {
@@ -446,6 +446,38 @@
           "base_checks": 12,
           "pretrained_gui_and_launcher_checks": 8,
           "log_sha256": "b5f8406a1780f1b4988be8669ab99cd92aa35ce2b37081a48d7ab1213ee6567a"
+        }
+      },
+      "workflow_status": "completed",
+      "workflow_conclusion": "success",
+      "macos_jobs_passed": true,
+      "macos_jobs": {
+        "3.11": {
+          "job_id": 114270865180,
+          "url": "https://github.com/fdrgsp/cali/actions/runs/38071878420/job/114270865180",
+          "conclusion": "success",
+          "passed": 2435,
+          "skipped": 17,
+          "duration_s": 926.76,
+          "log_sha256": "536026fb79b2cfea2db866f1cf4d5383f93f4415552927e53a73a7f9ae262d0d"
+        },
+        "3.12": {
+          "job_id": 114270865231,
+          "url": "https://github.com/fdrgsp/cali/actions/runs/38071878420/job/114270865231",
+          "conclusion": "success",
+          "passed": 2435,
+          "skipped": 17,
+          "duration_s": 913.06,
+          "log_sha256": "588a0bde8ea07ccd825b498a5879b2e0e8d1f6c8364329b6342219a3eeb72f2b"
+        },
+        "3.13": {
+          "job_id": 114270865308,
+          "url": "https://github.com/fdrgsp/cali/actions/runs/38071878420/job/114270865308",
+          "conclusion": "success",
+          "passed": 2435,
+          "skipped": 17,
+          "duration_s": 892.92,
+          "log_sha256": "bb4241ab18b5f4bc5e5435504953750b958d4a3e88a13acfba3a961e50e8ae62"
         }
       }
     }
@@ -490,7 +522,77 @@
       "tested_revision": "69236145a35f6a1ecc762cf8a2a4717195c958c8",
       "platforms": "all",
       "outcome_pending": true,
-      "scope": "Full macOS/Windows Python 3.11/3.12/3.13 and installed base/optional CASCADE wheel checks; separate concurrency group preserves activation macOS run"
+      "scope": "Full macOS/Windows Python 3.11/3.12/3.13 and installed base/optional CASCADE wheel checks; separate concurrency group preserves activation macOS run",
+      "dedicated_jobs_passed": true,
+      "workflow_status": "in_progress",
+      "workflow_conclusion": "",
+      "macos_jobs": {
+        "3.13": {
+          "job_id": 114273774766,
+          "url": "https://github.com/fdrgsp/cali/actions/runs/38072884020/job/114273774766",
+          "conclusion": "success",
+          "passed": 2443,
+          "skipped": 17,
+          "duration_s": 686.49,
+          "log_sha256": "69f98489a195b3fbee35affb4447204a746ccf7fb43db4d6b747916f3cb5d919"
+        }
+      },
+      "dedicated_jobs": {
+        "3.11": {
+          "job_id": 114273774828,
+          "url": "https://github.com/fdrgsp/cali/actions/runs/38072884020/job/114273774828",
+          "conclusion": "success",
+          "passed": 529,
+          "skipped": 1,
+          "log_sha256": "250e4e572650c79095411fe632af34fd79e97f4b816f8ce57843a9cb4838bcee"
+        },
+        "3.13": {
+          "job_id": 114273774757,
+          "url": "https://github.com/fdrgsp/cali/actions/runs/38072884020/job/114273774757",
+          "conclusion": "success",
+          "passed": 529,
+          "skipped": 1,
+          "log_sha256": "20300502812de7ae041b2280ed7086164429b4d1a8c28b6e092cfb0a70c5dd6a"
+        }
+      }
+    }
+  },
+  "setup_instructions_validation": {
+    "scope": "Actionable current-environment pinned installation/model-download commands, selectable plain text and accurate setup-instructions button label",
+    "installer": "uv pip install --python <running Python> CascadeTorch @ pinned source URL",
+    "package_revision": "95ea3cac2d5719583f4a9eb03d68c78bcbc20d08",
+    "checkout": "uv sync --extra cascade; preserve Cellpose extras; uv run cali",
+    "shell_quoting": [
+      "POSIX arguments round-trip through shlex.split",
+      "Windows PowerShell call operator and doubled single quotes checked in GUI tests"
+    ],
+    "native_powershell_execution_tested": false,
+    "source_gui_regression": {
+      "passed": 49,
+      "duration_s": 4.25
+    },
+    "installed_base_ci_command": {
+      "passed": 14,
+      "duration_s": 4.32,
+      "torch_and_cascade_absent": true,
+      "non_fatal_macos_dependency_atexit_warning": true
+    },
+    "installed_optional_ci_command": {
+      "passed": 10,
+      "duration_s": 11.08,
+      "includes_pretrained_gui_run": true
+    },
+    "wheel": "cali-0.1.dev1438+g4bb444cd5.d20261010-py3-none-any.whl",
+    "wheel_sha256": "c33c1dd81728178fb18b7ca9d1980c7667d7329236094d5969eb1cc2e7ccf024",
+    "gui_source_sha256": "70ff60c61002b956803f1c593e348c2011db66219998ce7fc2cb7d499b156207",
+    "source_wheel_and_both_installed_modules_equal": true,
+    "force_reinstalled_final_rebuilt_wheel": true,
+    "instructions_display_runs_no_installer_inference_or_download": true,
+    "blank_model_placeholder_preserved_in_plain_text": true,
+    "visual_snapshot": {
+      "file": "/tmp/cali-cascade-install-instructions.png",
+      "sha256": "ecb86f33d3404a0ac7528ecf6c98b2921bac966c36054db42500f670dfa8eb6e",
+      "reviewed": true
     }
   }
 }

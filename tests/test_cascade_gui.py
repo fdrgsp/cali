@@ -4,13 +4,16 @@ from __future__ import annotations
 
 import json
 import math
+import shlex
+import sys
 from dataclasses import asdict
 from types import SimpleNamespace
 from typing import TYPE_CHECKING
 from unittest.mock import Mock
 
 import pytest
-from qtpy.QtWidgets import QWidget
+from qtpy.QtCore import Qt
+from qtpy.QtWidgets import QMessageBox, QWidget
 from sqlmodel import Session
 
 from cali.gui import CaliGui
@@ -176,6 +179,91 @@ def test_model_catalogue_is_offline_rate_filtered_and_keeps_missing_selection(
     assert outputs._model.currentText() == ""
     with pytest.raises(ValueError, match="explicit cascade_model"):
         widget.to_model_settings()
+
+
+@pytest.mark.parametrize("platform", ["darwin", "win32"])
+def test_install_instructions_target_current_environment_and_pin(
+    qtbot: QtBot, monkeypatch: pytest.MonkeyPatch, tmp_path: Path, platform: str
+) -> None:
+    from cali import _cascade_package as package
+
+    widget = _ExtractionGUI(cascade_enabled=True)
+    qtbot.addWidget(widget)
+    outputs = widget._spike_outputs
+    outputs.setValue(("cascade",), "chosen-model", "mps")
+    python = (
+        "C:\\Users\\O'Neil\\env space\\python.exe"
+        if platform == "win32"
+        else "/Users/O'Neil/env space/bin/python"
+    )
+    cache = tmp_path / "model cache's folder"
+    messages: list[str] = []
+
+    def capture_dialog(dialog: QMessageBox) -> int:
+        assert dialog.textFormat() == Qt.TextFormat.PlainText
+        assert (
+            dialog.textInteractionFlags() & Qt.TextInteractionFlag.TextSelectableByMouse
+        )
+        assert (
+            dialog.textInteractionFlags()
+            & Qt.TextInteractionFlag.TextSelectableByKeyboard
+        )
+        messages.append(dialog.informativeText())
+        return 0
+
+    download = Mock(side_effect=AssertionError("Instructions must remain offline"))
+    load = Mock(side_effect=AssertionError("Instructions must not load inference"))
+    monkeypatch.setattr("cali._cascade_models.cascade_model_dir", lambda: cache)
+    monkeypatch.setattr("cali._cascade_models.download_cascade_model", download)
+    monkeypatch.setattr(package, "load_cascade_package", load)
+    monkeypatch.setattr(QMessageBox, "exec", capture_dialog)
+    monkeypatch.setattr(sys, "executable", python)
+    monkeypatch.setattr(sys, "platform", platform)
+    outputs._install.click()
+    assert len(messages) == 1
+    message = messages[0]
+    assert "uv sync --extra cascade" in message
+    assert "launch with uv run cali" in message
+    assert "Restart cali after installing" in message
+    install = next(
+        line for line in message.splitlines() if package.CASCADE_PACKAGE_URL in line
+    )
+    download_command = next(
+        line for line in message.splitlines() if "cascade-download" in line
+    )
+    if platform == "win32":
+        assert "Windows PowerShell" in message
+        assert install.startswith("& 'uv' 'pip' 'install' '--python'")
+        assert "'C:\\Users\\O''Neil\\env space\\python.exe'" in install
+        assert download_command.startswith(
+            "& 'C:\\Users\\O''Neil\\env space\\python.exe' '-m' 'cali'"
+        )
+        assert "model cache''s folder" in download_command
+    else:
+        assert shlex.split(install) == [
+            "uv",
+            "pip",
+            "install",
+            "--python",
+            python,
+            f"CascadeTorch @ {package.CASCADE_PACKAGE_URL}",
+        ]
+        assert shlex.split(download_command) == [
+            python,
+            "-m",
+            "cali",
+            "cascade-download",
+            "chosen-model",
+            "--model-dir",
+            str(cache),
+        ]
+    assert outputs.value() == (("cascade",), "chosen-model", "mps")
+    outputs.setValue(("cascade",), None, "mps")
+    outputs._install.click()
+    assert len(messages) == 2
+    assert "<model-name>" in messages[1]
+    download.assert_not_called()
+    load.assert_not_called()
 
 
 def test_model_verification_shows_metadata_without_inference_or_fallback(

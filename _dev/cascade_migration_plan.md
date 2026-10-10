@@ -6,6 +6,35 @@
 
 ---
 
+## P8 continuation — actionable setup instructions (2026-10-10)
+
+- The package-help button is now **Setup instructions...**, matching its behavior.
+  It shows the checkout `uv sync --extra cascade` route and a command to install
+  the immutable CascadeTorch dependency into the running GUI's Python environment.
+  Model-download commands use that same executable through `python -m cali`.
+  Users are told to preserve Cellpose extras, restart after installation, and
+  refresh/verify models after a CLI download. No installer or download runs when
+  the instructions open.
+- Commands use POSIX shell quoting or Windows PowerShell's call operator and
+  single-quote escaping, including paths with spaces and apostrophes. The dialog
+  uses selectable plain text, so commands and the `<model-name>` placeholder can
+  be copied. Its normal-weight instruction body was rendered and reviewed.
+- Dedicated installed-wheel CI now exercises both command-formatting cases before
+  and after installing the optional dependency. **49 source GUI/download/launcher
+  cases passed in 4.25 s**; the exact installed base CI command passed **14 tests
+  in 4.32 s** with Torch/CASCADE absent; the exact optional CI command passed
+  **10 tests in 11.08 s**, including actual pretrained GUI extraction/offline reuse.
+  Source, wheel and both installed GUI module bytes match. Hooks pass. PowerShell
+  formatting is covered by GUI assertions; native PowerShell execution was not
+  performed locally.
+- [Activation CI run 38071878420](https://github.com/fdrgsp/cali/actions/runs/38071878420)
+  is fully **successful** for `2b32b1a`: macOS Python 3.11/3.12/3.13 each passed
+  **2435 tests, 17 skipped**; both dedicated CASCADE jobs passed **529 tests, 1 skipped**.
+  The later full-platform model-rate run `38072884020` passed both dedicated jobs
+  (**529 tests, 1 skipped** each) and macOS Python 3.13 (**2443 tests, 17 skipped**).
+  The remaining platform jobs are still running. This setup-flow revision will use
+  a separate macOS-scoped CI follow-up to preserve that full-platform run.
+
 ## P8 continuation — model-rate guidance and completed full-platform CI (2026-10-10)
 
 - The catalogue filter previously used symmetric `math.isclose`, which could offer
