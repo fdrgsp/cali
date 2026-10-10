@@ -25,6 +25,10 @@ The full follow-up run for `208d1e2` also passed Windows Python 3.13:
 **2399 passed, 52 skipped in 2442.30 s**. Windows 3.11/3.12 remain running.
 The macOS-scoped activation run for `03644e3` is superseded by this CI coverage
 continuation; the separate full-platform run retains its Windows jobs.
+The updated [activation CI run 38071878420](https://github.com/fdrgsp/cali/actions/runs/38071878420)
+tests `2b32b1a1118bf9ee4bf364139f98ea3f86729e5e` in the separate macOS scope,
+including both installed launcher checks. It has been dispatched; its outcome is
+pending. No complete workflow success is claimed for this revision.
 
 ## P8 continuation — normal development launcher enabled (2026-10-10)
 

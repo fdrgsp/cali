@@ -396,6 +396,16 @@
       "optional_step_includes_real_launcher": true,
       "explicit_offline_icons": true,
       "local_base_and_optional_commands_passed": true
+    },
+    "remote_ci_followup": {
+      "run_id": 38071878420,
+      "url": "https://github.com/fdrgsp/cali/actions/runs/38071878420",
+      "tested_revision": "2b32b1a1118bf9ee4bf364139f98ea3f86729e5e",
+      "platforms": "macos",
+      "scope": "Manifest, installed base/optional CASCADE launcher and pretrained checks, macOS full suites on Python 3.11/3.12/3.13",
+      "dispatched": true,
+      "outcome_pending": true,
+      "separate_concurrency_group_preserves_full_platform_windows_run": 38068833375
     }
   }
 }
