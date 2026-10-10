@@ -76,6 +76,12 @@ jobs:
           PYTEST_RUNNING: '1'
           QT_QPA_PLATFORM: offscreen
         run: .cascade-smoke/bin/python -I -m pytest --noconftest -q tests/test_cascade_extraction.py tests/test_cascade_runner_analysis.py -k pretrained
+      - name: Verify GUI run lifecycle and pretrained offline reanalysis
+        env:
+          CALI_CASCADE_REFERENCE_TESTS: '1'
+          PYTEST_RUNNING: '1'
+          QT_QPA_PLATFORM: offscreen
+        run: .cascade-smoke/bin/python -I -m pytest --noconftest -q tests/test_cascade_gui_acceptance.py
       - name: Verify installed-wheel trace codec, migration, ROI/FOV, noise QC, export, and plot semantics
         env:
           QT_QPA_PLATFORM: offscreen

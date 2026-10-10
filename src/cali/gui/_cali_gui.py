@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import time
 from pathlib import Path
+from threading import Event
 from typing import TYPE_CHECKING, Any, cast
 
 import numpy as np
@@ -13,7 +14,7 @@ from pymmcore_widgets.useq_widgets._well_plate_widget import (
     DATA_POSITION,
     WellPlateView,
 )
-from qtpy.QtCore import Qt
+from qtpy.QtCore import Qt, Slot
 from qtpy.QtGui import QAction, QCloseEvent
 from qtpy.QtWidgets import (
     QAbstractGraphicsShapeItem,
@@ -92,6 +93,8 @@ from ._util import (
 if TYPE_CHECKING:
     from collections.abc import Generator
 
+    from superqt.utils import WorkerBase
+
 
 from cali.logger import cali_logger
 from cali.readers import (
@@ -127,6 +130,10 @@ class CaliGui(QMainWindow):
 
         # RUNNER ----------------------------------------------------------------------
         self._runner = CaliRunner()
+        self._run_worker: WorkerBase | None = None
+        self._run_cancel_event: Event | None = None
+        self._run_failed = False
+        self._close_when_run_finishes = False
 
         # PROGRESS BAR WIDGET --------------------------------------------------------
         self._loading_bar: _ProgressBarWidget | None = None
@@ -493,6 +500,12 @@ class CaliGui(QMainWindow):
     def closeEvent(self, a0: QCloseEvent | None) -> None:
         """Override closeEvent to properly dispose of database connections."""
         self._extraction_wdg._spike_outputs._cancel_model_download()
+        if self._run_worker is not None:
+            self._close_when_run_finishes = True
+            self._on_cali_cancel()
+            if a0 is not None:
+                a0.ignore()
+            return
         # Save plate map data before closing
         try:
             self._save_plate_map_to_database()
@@ -1359,7 +1372,7 @@ class CaliGui(QMainWindow):
 
     def _on_cali_run(self) -> None:
         """Handle run button - routes to detection/analysis based on current tab."""
-        if self._database_path is None:
+        if self._database_path is None or self._run_worker is not None:
             return
 
         try:
@@ -1659,49 +1672,35 @@ class CaliGui(QMainWindow):
 
             # Try to run, but catch ambiguity errors
             try:
-                # Create a generator function wrapper for create_worker
-                def _run_generator() -> Generator[str, None, None]:
-                    assert self._database_path is not None
-                    assert detection_settings is not None  # Ensured by pre-flight check
-
-                    # Get export options only if running that phase
-                    export_traces = None
-                    if value.run_extraction and extraction_settings is not None:
-                        export_traces = self._extraction_wdg.get_export_options()
-                    export_correlations = None
-                    if value.run_analysis and analysis_settings is not None:
-                        export_correlations = self._analysis_wdg.get_export_options()
-
-                    result = self._runner.run(
-                        experiment,
-                        self._data.path if self._data is not None else None,
-                        detection_settings,
-                        extraction_settings=extraction_settings,
-                        analysis_settings=analysis_settings,
-                        global_position_indices=pos,
-                        database_name=Path(self._database_path).name,
-                        output_path=(
-                            Path(self._output_path) if self._output_path else None
+                assert detection_settings is not None
+                self._start_run_worker(
+                    {
+                        "experiment": experiment,
+                        "dataset_path": self._data.path
+                        if self._data is not None
+                        else None,
+                        "detection_settings": detection_settings,
+                        "extraction_settings": extraction_settings,
+                        "analysis_settings": analysis_settings,
+                        "global_position_indices": pos,
+                        "database_name": Path(self._database_path).name,
+                        "output_path": Path(self._output_path)
+                        if self._output_path
+                        else None,
+                        "export_traces": (
+                            self._extraction_wdg.get_export_options()
+                            if value.run_extraction and extraction_settings is not None
+                            else None
                         ),
-                        as_generator=True,
-                        export_traces=export_traces,
-                        export_correlations=export_correlations,
-                        source_extraction_result_id=value.source_extraction_result_id,
-                    )
-                    assert result is not None
-                    yield from result
-
-                # disable gui before running
-                self._enable(False)
-
-                create_worker(
-                    _run_generator,
-                    _start_thread=True,
-                    _connect={
-                        "errored": self._on_worker_errored,
-                        "yielded": self._on_worker_yield,
-                        "finished": self._on_worker_finished,
-                    },
+                        "export_correlations": (
+                            self._analysis_wdg.get_export_options()
+                            if value.run_analysis and analysis_settings is not None
+                            else None
+                        ),
+                        "source_extraction_result_id": (
+                            value.source_extraction_result_id
+                        ),
+                    }
                 )
             except ValueError as e:
                 # Check if this is an ambiguity error
@@ -1845,49 +1844,69 @@ class CaliGui(QMainWindow):
         self._run_cali_wdg.set_progress_bar_text("🚀 Initializing...")
         self._elapsed_timer.start()
 
-        # Create generator with explicit settings from selected run
-        def _run_generator() -> Generator[str, None, None]:
-            assert self._data is not None
-            assert self._database_path is not None
-            assert selected_run.detection_settings_id is not None
+        self._start_run_worker(
+            {
+                "experiment": experiment,
+                "dataset_path": self._data.path,
+                "detection_settings": selected_run.detection_settings_id,
+                "extraction_settings": selected_run.extraction_settings_id,
+                "analysis_settings": selected_run.analysis_settings_id,
+                "global_position_indices": positions,
+                "database_name": Path(self._database_path).name,
+                "output_path": Path(self._output_path) if self._output_path else None,
+                "export_traces": (
+                    self._extraction_wdg.get_export_options()
+                    if run_extraction
+                    and selected_run.extraction_settings_id is not None
+                    else None
+                ),
+                "export_correlations": (
+                    self._analysis_wdg.get_export_options()
+                    if run_analysis and selected_run.analysis_settings_id is not None
+                    else None
+                ),
+            }
+        )
 
-            # Get export options only if running that phase
-            export_traces = None
-            if run_extraction and selected_run.extraction_settings_id is not None:
-                export_traces = self._extraction_wdg.get_export_options()
-            export_correlations = None
-            if run_analysis and selected_run.analysis_settings_id is not None:
-                export_correlations = self._analysis_wdg.get_export_options()
+    def _start_run_worker(self, arguments: dict[str, Any]) -> None:
+        """Launch a run with settings captured on the GUI thread."""
+        if self._run_worker is not None:
+            return
+        runner = self._runner
+        cancel = Event()
 
-            result = self._runner.run(
-                experiment,
-                self._data.path if self._data is not None else None,
-                detection_settings=selected_run.detection_settings_id,
-                extraction_settings=selected_run.extraction_settings_id,
-                analysis_settings=selected_run.analysis_settings_id,
-                global_position_indices=positions,
-                database_name=Path(self._database_path).name,
-                output_path=Path(self._output_path) if self._output_path else None,
-                as_generator=True,
-                export_traces=export_traces,
-                export_correlations=export_correlations,
-            )
+        def run() -> Generator[str, None, None]:
+            # The closure contains no Qt widgets or mutable GUI paths.
+            if cancel.is_set():
+                return
+            result = runner.run(**arguments, as_generator=True)
             assert result is not None
-            yield from result
+            # Generator setup clears runner cancellation flags. Reapply a pending
+            # request at progress boundaries before advancing to position work.
+            try:
+                for progress in result:
+                    if cancel.is_set():
+                        runner.cancel()
+                        return
+                    yield progress
+            finally:
+                result.close()
 
-        # Disable GUI before running
-        self._enable(False)
-
-        create_worker(
-            _run_generator,
-            _start_thread=True,
+        self._run_failed = False
+        self._run_cancel_event = cancel
+        self._run_worker = create_worker(
+            run,
+            _start_thread=False,
             _connect={
                 "errored": self._on_worker_errored,
                 "yielded": self._on_worker_yield,
                 "finished": self._on_worker_finished,
             },
         )
+        self._enable(False)
+        self._run_worker.start()
 
+    @Slot(object)  # type: ignore[untyped-decorator]
     def _on_worker_yield(self, progress: str) -> None:
         """Update progress bar with yielded progress information."""
         if progress.startswith("PROGRESS:RESET"):
@@ -2013,12 +2032,14 @@ class CaliGui(QMainWindow):
         finally:
             self._hide_loading_bar()
 
+    @Slot(object)  # type: ignore[untyped-decorator]
     def _on_worker_errored(self, error: Any) -> None:
         """Handle errors from the runner."""
         import traceback
 
+        self._run_failed = True
         self._elapsed_timer.stop()
-        self._enable(True)
+        self._run_cali_wdg.set_progress_bar_text("❌ Cali Run Failed")
 
         # Format the error with full traceback
         if hasattr(error, "__traceback__"):
@@ -2034,10 +2055,13 @@ class CaliGui(QMainWindow):
         )
 
         # Also show error dialog to user
-        show_error_dialog(self, f"❌ Cali Runner Error:\n\n{error_msg}")
+        if not self._close_when_run_finishes:
+            show_error_dialog(self, f"❌ Cali Runner Error:\n\n{error_msg}")
 
     def _on_cali_cancel(self) -> None:
         """Handle cancellation of the runner."""
+        if self._run_cancel_event is not None:
+            self._run_cancel_event.set()
         self._runner.cancel()
         self._run_cali_wdg.set_progress_bar_text("🚮 Cancel Requested")
 
@@ -2072,11 +2096,26 @@ class CaliGui(QMainWindow):
         finally:
             engine.dispose(close=True)
 
+    @Slot()  # type: ignore[untyped-decorator]
     def _on_worker_finished(self) -> None:
-        """Handle completion of the runner."""
-        self._enable(True)
+        """Refresh complete results while preserving the run's outcome."""
+        self._run_worker = None
+        cancelled = (
+            self._run_cancel_event is not None and self._run_cancel_event.is_set()
+        )
+        self._run_cancel_event = None
         self._elapsed_timer.stop()
-        self._run_cali_wdg.set_progress_bar_text("🏁 Cali Run Finished")
+        if self._close_when_run_finishes:
+            self.close()
+            return
+        self._enable(True)
+        if self._run_failed:
+            status = "❌ Cali Run Failed"
+        elif cancelled:
+            status = "🚮 Cali Run Cancelled"
+        else:
+            status = "🏁 Cali Run Finished"
+        self._run_cali_wdg.set_progress_bar_text(status)
         # refresh the runs panel
         self._runs_panel.refresh_runs()
         # repopulate detection settings combobox

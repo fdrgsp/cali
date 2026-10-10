@@ -6,6 +6,44 @@
 
 ---
 
+## P8 continuation — GUI run acceptance and installed-wheel CI (2026-10-10)
+
+- New Run-button acceptance covers OASIS, CASCADE and dual extraction with full
+  analysis, persisted method ownership and nonzero startup discard, followed by
+  database-only re-analysis after thresholds change. The optional case uses the
+  exact pinned pretrained model and CPU reference implementation. Offline reuse
+  must preserve the original traces/inference rows without loading CASCADE models
+  or its optional package. Existing stored-run plot selectors and timing/download
+  checks remain in the GUI regression matrix.
+- Run configuration, paths and export selections are captured on the GUI thread.
+  The background generator no longer reads Qt controls or mutable GUI paths.
+  Duplicate starts are ignored, callbacks are bound Qt slots, and failure/cancel
+  feedback is preserved when the worker finishes. A cancellation token survives
+  generator setup and stops advancement at progress boundaries; the generator is
+  closed to release its resources. Closing a running window requests cancellation
+  and waits for worker completion before cleaning up its reader and graph engines.
+- The dedicated installed-wheel CI job now includes GUI lifecycle and pretrained
+  Run-button/offline reuse acceptance. Local isolated-wheel validation passed all
+  **7 tests in 15.19 s**, with a freshly installed pinned optional dependency and
+  verified model manifest `ac8954174ba0a01a2d929a7e8b3fc7e3a4365d5c01f5e262d2b597822fcae184`.
+  The test's explicit analysis rate matches the 30 Hz model; the fake 10 Hz case
+  alone would not verify this configuration.
+- Read-only GitHub inspection found no CI runs on `cascade`; its remote revision
+  was `89a942557b9b19b8ee2bbb2cc379c1b5ce19a222`. No workflow was triggered and no
+  branch was pushed. Remote CI remains an outstanding gate, separate from this
+  local installed-wheel evidence. GUI technical run acceptance is complete;
+  normal extraction exposure still waits for remote CI, representative memory
+  acceptance, and distribution licensing review.
+
+Validation: **143 passed, 1 pretrained case skipped in 26.73 s** in the source GUI
+matrix; the separate installed-wheel run includes the pretrained case. An existing
+source-forwarding mock was updated to return a generator and check the snapshotted
+keyword arguments, preserving exact extraction-generation ownership. Its focused
+source/GUI matrix passed **19 tests, 1 skipped in 7.33 s**. The final shared GUI
+and image-harness suite passed **2427 tests, 17 skipped in 305.55 s**. Repository
+hooks pass. Test-generated database changes were backed up with verified checksums
+and restored.
+
 ## P8 continuation — source timing and startup-discard preview (2026-10-10)
 
 - **Prepare traces** now previews the selected FOV's original frame count, timing
@@ -65,9 +103,10 @@ below, which are kept as historical records.
   expected outcome is to promote the cached service once the deferred real-plate
   benchmark confirms its speed and memory advantage on real recordings.
 
-Remaining release gates for GUI extraction exposure: GUI release acceptance, the first
-remote run of the dedicated CASCADE CI job, an accepted representative complete-pipeline memory budget, and the licensing review
-before distribution.
+Remaining release gates for GUI extraction exposure: the first remote run of the
+dedicated CASCADE CI job, an accepted representative complete-pipeline memory budget,
+and the licensing review before distribution. Local GUI technical run acceptance is
+recorded in the 2026-10-10 continuation above.
 
 ## P8 continuation — cancellable background model download (2026-10-04)
 

@@ -1,0 +1,40 @@
+{
+  "recorded_date": "2026-10-10",
+  "scope": "GUI technical run acceptance; normal CASCADE extraction remains gated",
+  "runtime_gui_source_sha256": "8f8304b01f4a2264e6b28d641ca6aaee6e09a9f18d5ff5eadbc914473843df67",
+  "installed_wheel_sha256": "e7b1d9da0c350b3e0f104aec47f3c2c488184a0fa05b542212748b80a8477cfa",
+  "package_revision": "95ea3cac2d5719583f4a9eb03d68c78bcbc20d08",
+  "model": "Global_EXC_30Hz_smoothing25ms",
+  "model_manifest_sha256": "ac8954174ba0a01a2d929a7e8b3fc7e3a4365d5c01f5e262d2b597822fcae184",
+  "installed_wheel": {
+    "passed": 7,
+    "seconds": 15.19,
+    "source_checkout_on_sys_path": false,
+    "conftest_loaded": false,
+    "pretrained_device": "cpu",
+    "pretrained_rois": 2,
+    "source_frames": 256,
+    "discard_frames": 11
+  },
+  "source_gui_matrix": {
+    "passed": 143,
+    "skipped": 1,
+    "seconds": 26.73
+  },
+  "full_worktree_suite": {
+    "passed": 2427,
+    "skipped": 17,
+    "seconds": 305.55
+  },
+  "remote_ci": {
+    "observed_branch_revision": "89a942557b9b19b8ee2bbb2cc379c1b5ce19a222",
+    "observed_runs": 0,
+    "triggered": false,
+    "pushed": false
+  },
+  "remaining_gates": [
+    "remote dedicated CI",
+    "accepted representative pipeline memory budget",
+    "distribution licensing review"
+  ]
+}

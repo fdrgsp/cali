@@ -410,7 +410,7 @@ def test_gui_forwards_exact_source_and_selected_detection_to_runner(
         patch.object(gui, "_save_plate_map_to_database"),
         patch.object(gui, "_enable"),
         patch.object(gui._detection_wdg, "to_model_settings") as detection,
-        patch.object(gui._runner, "run", return_value=iter([])) as run,
+        patch.object(gui._runner, "run", return_value=(item for item in ())) as run,
         patch("cali.gui._cali_gui.create_worker") as worker,
         patch("cali.gui._cali_gui.show_error_dialog") as error,
     ):
@@ -419,7 +419,8 @@ def test_gui_forwards_exact_source_and_selected_detection_to_runner(
         detection.assert_not_called()
         assert worker.call_count == 1
         list(worker.call_args.args[0]())
-        assert run.call_args.args[2] == detection_id
+        assert run.call_args.kwargs["detection_settings"] == detection_id
         assert run.call_args.kwargs["extraction_settings"] == extraction_id
         assert run.call_args.kwargs["source_extraction_result_id"] == source_id
+        worker.call_args.kwargs["_connect"]["finished"]()
     gui._elapsed_timer.stop()
