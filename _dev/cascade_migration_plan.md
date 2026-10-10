@@ -33,7 +33,11 @@
   for `2b32b1a` passed both dedicated jobs with **529 tests, 1 skipped** each,
   including **12 base checks** and **8 pretrained GUI/launcher checks**. Its full
   macOS suites are still running; the new model-guidance revision is locally
-  validated and will receive follow-up CI. Distribution review remains pending.
+  validated. Distribution review remains pending.
+  [Model-rate follow-up CI run 38072884020](https://github.com/fdrgsp/cali/actions/runs/38072884020)
+  has been dispatched with `platforms=all` for `69236145a35f6a1ecc762cf8a2a4717195c958c8`.
+  It covers both macOS and Windows without cancelling the separate activation
+  macOS run; its outcome remains pending.
 
 ## P8 continuation — installed launcher CI coverage (2026-10-10)
 

@@ -483,6 +483,14 @@
       "file": "/tmp/cali-model-rate-guidance.png",
       "sha256": "702a294d84747fc99c4aefcfb12ac6d03e91e3c64fedd31f70509df003b435ed",
       "scope": "Actual verified 30 Hz model with configured 10/30 Hz rates; rate warning updates without re-verification"
+    },
+    "remote_ci_followup": {
+      "run_id": 38072884020,
+      "url": "https://github.com/fdrgsp/cali/actions/runs/38072884020",
+      "tested_revision": "69236145a35f6a1ecc762cf8a2a4717195c958c8",
+      "platforms": "all",
+      "outcome_pending": true,
+      "scope": "Full macOS/Windows Python 3.11/3.12/3.13 and installed base/optional CASCADE wheel checks; separate concurrency group preserves activation macOS run"
     }
   }
 }
