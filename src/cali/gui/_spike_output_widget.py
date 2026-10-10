@@ -73,6 +73,7 @@ class _SpikeOutputWidget(QGroupBox):
         self._cascade_enabled = cascade_enabled
         self._read_only = False
         self._frame_rate = 10.0
+        self._verified_model: CascadeModel | None = None
         self._download_worker: FunctionWorker[CascadeModel] | None = None
         self._download_name = ""
         self._download_cancel = Event()
@@ -305,7 +306,16 @@ class _SpikeOutputWidget(QGroupBox):
                 get_cascade_catalogue(), self._frame_rate
             )
         except (CascadeModelError, OSError) as error:
-            self._info.setText(str(error))
+            if (
+                self._verified_model is not None
+                and selected.strip() == self._verified_model.name
+            ):
+                self._update_info()
+                self._info.setText(
+                    f"{self._info.text()} Model list could not be refreshed: {error}"
+                )
+            else:
+                self._info.setText(str(error))
             return
         with signals_blocked(self._model):
             self._model.clear()
@@ -317,6 +327,14 @@ class _SpikeOutputWidget(QGroupBox):
         self._update_info()
 
     def _update_info(self) -> None:
+        if (
+            self._verified_model is not None
+            and self._model.currentText().strip() == self._verified_model.name
+        ):
+            self._show_model_details(self._verified_model)
+            self._update_enabled()
+            return
+        self._verified_model = None
         index = self._model.findText(self._model.currentText())
         info = self._model.itemData(index) if index >= 0 else None
         self._info.setText(
@@ -420,6 +438,7 @@ class _SpikeOutputWidget(QGroupBox):
         from cali._cascade_models import CascadeModelError, load_cascade_model
 
         name = self._model.currentText().strip()
+        self._verified_model = None
         if not name:
             self._info.setText("Choose a model explicitly before verifying its cache.")
             return
@@ -431,12 +450,27 @@ class _SpikeOutputWidget(QGroupBox):
         self._show_model_details(model)
 
     def _show_model_details(self, model: CascadeModel) -> None:
+        from cali._cascade_models import cascade_model_rate_matches
+
+        self._verified_model = model
         kernel = "causal" if model.causal_kernel else "acausal"
+        rate_status = (
+            f"Configured acquisition rate {self._frame_rate:g} Hz matches this "
+            "model within the allowed 1%. Extraction also checks the recording's "
+            "acquisition timing."
+            if cascade_model_rate_matches(self._frame_rate, model.sampling_rate)
+            else (
+                f"Rate mismatch: configured acquisition is {self._frame_rate:g} Hz "
+                f"but this model requires {model.sampling_rate:g} Hz (allowed 1%). "
+                "Choose a model for your actual acquisition rate; change the "
+                "configured rate only if it does not describe your recording."
+            )
+        )
         self._info.setText(
             f"Verified {model.name}: {model.sampling_rate:g} Hz, "
             f"smoothing {model.smoothing * 1000:g} ms, {kernel} kernel; "
             f"noise levels {', '.join(map(str, model.noise_levels))}; "
             f"{model.ensemble_size} models per noise level. "
             f"Minimum retained length: {model.minimum_frames} frames. "
-            "The measured acquisition rate must match this model before inference."
+            f"{rate_status}"
         )

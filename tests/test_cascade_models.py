@@ -231,6 +231,17 @@ def test_rate_choices_never_choose_nearest(
     assert len(fake_download["calls"]) == 1
 
 
+@pytest.mark.parametrize(
+    ("rate", "matches"),
+    [(99, True), (101, True), (101.001, False), (98.999, False)],
+)
+def test_catalogue_rate_tolerance_is_relative_to_model(
+    rate: float, matches: bool
+) -> None:
+    entry = models.CatalogueEntry("model_100Hz", "https://example.test", "", 100)
+    assert bool(models.compatible_cascade_models((entry,), rate)) is matches
+
+
 @pytest.mark.parametrize("name", ["../model", "/absolute", "bad name", "", ".hidden"])
 def test_invalid_selection_never_downloads(
     name: str, tmp_path: Path, fake_download: dict[str, Any]

@@ -1,10 +1,39 @@
 # Adding CASCADE spike inference to `cali`
 
 **Branch**: `cascade` (branched from `main` at `336e7b5`)
-**Status**: P1/P2a and prerequisite P2b/P2c implemented; pinned CASCADE package, P4 verified model cache/download CLI, P3a pretrained reference adapter, experimental P3b cached service, and P5 headless runner/persistence/export integration implemented; controlled Step 10 extraction/storage measurements collected and two integration bugs fixed; schema-11 lossless trace-array codec implemented; schema-13 byte-shuffle codec repairs the complete-image storage budget with exact samples; P6a shared ROI calculations, CASCADE ROI metrics, P6b method-bound FOV populations, P6c1 method-aware exports, P6c2a plot registry/ROI consumers, P6c2b population/burst/matrix consumers, P6c2c evoked/sorted/PCA consumers, P6c2d aligned comparisons and P6d full-runner parity/failure isolation implemented; schema-12 population coordinates added; headless CASCADE extraction and spike analysis enabled; controlled full-analysis and 100 × 6000 complete-image measurements with database audits complete, default single-worker FOV startup optimized; versioned byte-shuffle reader/migration and installed-wheel consumer checks complete; schema-14 method-qualified noise QC summaries, exports and advisory batch checks implemented; P8 GUI settings/controls, cancellable background model download, timing-source/resolved-discard previews and stored-results selection implemented behind the extraction release gate; camera-sized single-worker CPU/MPS memory measurements complete; dedicated remote installed-wheel CASCADE CI passed on Python 3.11/3.13 and combined macOS/Windows suites passed on Python 3.11/3.12/3.13; normal development launcher CASCADE extraction enabled with the user-accepted 6 GiB single-worker benchmark profile; distribution licensing review pending; real-plate benchmark and CUDA validation deferred, upstream packaging submission dropped (see Scope decisions, 2026-10-05)
+**Status**: P1/P2a and prerequisite P2b/P2c implemented; pinned CASCADE package, P4 verified model cache/download CLI, P3a pretrained reference adapter, experimental P3b cached service, and P5 headless runner/persistence/export integration implemented; controlled Step 10 extraction/storage measurements collected and two integration bugs fixed; schema-11 lossless trace-array codec implemented; schema-13 byte-shuffle codec repairs the complete-image storage budget with exact samples; P6a shared ROI calculations, CASCADE ROI metrics, P6b method-bound FOV populations, P6c1 method-aware exports, P6c2a plot registry/ROI consumers, P6c2b population/burst/matrix consumers, P6c2c evoked/sorted/PCA consumers, P6c2d aligned comparisons and P6d full-runner parity/failure isolation implemented; schema-12 population coordinates added; headless CASCADE extraction and spike analysis enabled; controlled full-analysis and 100 × 6000 complete-image measurements with database audits complete, default single-worker FOV startup optimized; versioned byte-shuffle reader/migration and installed-wheel consumer checks complete; schema-14 method-qualified noise QC summaries, exports and advisory batch checks implemented; P8 GUI settings/controls, cancellable background model download, timing-source/resolved-discard previews and stored-results selection implemented and enabled in the normal development launcher; camera-sized single-worker CPU/MPS memory measurements complete; dedicated remote installed-wheel CASCADE CI passed on Python 3.11/3.13 and combined macOS/Windows suites passed on Python 3.11/3.12/3.13; normal development launcher CASCADE extraction enabled with the user-accepted 6 GiB single-worker benchmark profile; distribution licensing review pending; real-plate benchmark and CUDA validation deferred, upstream packaging submission dropped (see Scope decisions, 2026-10-05)
 **Date**: 2026-10-10
 
 ---
+
+## P8 continuation — model-rate guidance and completed full-platform CI (2026-10-10)
+
+- The catalogue filter previously used symmetric `math.isclose`, which could offer
+  a model just outside inference's model-relative 1% tolerance (for example,
+  10.1005 Hz with a 10 Hz model). The chooser and reference/cached preflight now
+  share the existing inference rule. Reference inference acceptance is unchanged;
+  the chooser excludes rates that inference already rejected.
+- Verified model details state whether the configured acquisition rate matches,
+  explain a mismatch, and update when the rate changes. The explicit selection is
+  preserved; changing the rate never reloads checkpoints or substitutes a model.
+  When the catalogue is unavailable, the selected model's last verified details
+  and updated guidance remain visible alongside the refresh error. Changing models
+  clears the old details. Actual acquisition-timing checks remain authoritative.
+- Local source regression: **166 passed, 6 optional cases skipped in 5.29 s**;
+  the explicit catalogue-success/failure case passed separately in **1.44 s**.
+  Installed optional wheel: **134 passed in 13.70 s**, including actual pretrained
+  reference/cached numerical and GUI extraction/offline checks. Installed base
+  wheel: **12 passed in 3.73 s**, with Torch/CASCADE absent. Hooks pass. The matching
+  and mismatching real-model GUI panels were rendered and reviewed.
+- [Full-platform run 38068833375](https://github.com/fdrgsp/cali/actions/runs/38068833375)
+  is now **successful** for `208d1e2`: each macOS suite passed **2434 tests, 17 skipped**;
+  each Windows suite passed **2399 tests, 52 skipped** on Python 3.11/3.12/3.13.
+  Both dedicated CASCADE jobs passed **527 tests, 1 skipped**.
+- The later [activation run 38071878420](https://github.com/fdrgsp/cali/actions/runs/38071878420)
+  for `2b32b1a` passed both dedicated jobs with **529 tests, 1 skipped** each,
+  including **12 base checks** and **8 pretrained GUI/launcher checks**. Its full
+  macOS suites are still running; the new model-guidance revision is locally
+  validated and will receive follow-up CI. Distribution review remains pending.
 
 ## P8 continuation — installed launcher CI coverage (2026-10-10)
 

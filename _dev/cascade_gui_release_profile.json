@@ -197,7 +197,7 @@
     "tested_revision": "208d1e228249badc3cfeb46319759c8bd79f7062",
     "scope": "All-platform follow-up on the GUI worker and method-export changes; normal launcher activation remains unapplied.",
     "dedicated_cascade_jobs_passed": true,
-    "full_platform_jobs_pending": true,
+    "full_platform_jobs_pending": false,
     "jobs": {
       "3.11": {
         "job_id": 114261905549,
@@ -322,7 +322,7 @@
         "log_sha256": "cc053fd3fc04cbd8118c019612526f739d111dda96f88c5605b11f5ccb459a9f"
       }
     },
-    "windows_jobs_pending": true,
+    "windows_jobs_pending": false,
     "windows_jobs": {
       "3.13": {
         "job_id": 114261905417,
@@ -332,8 +332,29 @@
         "skipped": 52,
         "duration_s": 2442.3,
         "log_sha256": "b101505bac1ce1027c984ee6a5e1bd0607adf214317c5c65ead2cbaf1f25b60d"
+      },
+      "3.11": {
+        "job_id": 114261905408,
+        "url": "https://github.com/fdrgsp/cali/actions/runs/38068833375/job/114261905408",
+        "conclusion": "success",
+        "passed": 2399,
+        "skipped": 52,
+        "duration_s": 3041.97,
+        "log_sha256": "1926fa540d95cd2f589e897cff7998ae20dadb590f7fa50f2d62340f0466f58e"
+      },
+      "3.12": {
+        "job_id": 114261905306,
+        "url": "https://github.com/fdrgsp/cali/actions/runs/38068833375/job/114261905306",
+        "conclusion": "success",
+        "passed": 2399,
+        "skipped": 52,
+        "duration_s": 3213.26,
+        "log_sha256": "6053679370b298a1c9de5cb4391404eeb4e65378dc2919623ba11d9b40c92ebf"
       }
-    }
+    },
+    "workflow_status": "completed",
+    "workflow_conclusion": "success",
+    "all_windows_jobs_passed": true
   },
   "development_activation_validation": {
     "launcher_regression": {
@@ -405,7 +426,63 @@
       "scope": "Manifest, installed base/optional CASCADE launcher and pretrained checks, macOS full suites on Python 3.11/3.12/3.13",
       "dispatched": true,
       "outcome_pending": true,
-      "separate_concurrency_group_preserves_full_platform_windows_run": 38068833375
+      "separate_concurrency_group_preserves_full_platform_windows_run": 38068833375,
+      "dedicated_jobs_passed": true,
+      "dedicated_jobs": {
+        "3.11": {
+          "job_id": 114270865222,
+          "url": "https://github.com/fdrgsp/cali/actions/runs/38071878420/job/114270865222",
+          "passed": 529,
+          "skipped": 1,
+          "base_checks": 12,
+          "pretrained_gui_and_launcher_checks": 8,
+          "log_sha256": "acb8526a3b1b6137c20b3667516ff47cbb1935a3caafa07ba3c938152af9562e"
+        },
+        "3.13": {
+          "job_id": 114270865198,
+          "url": "https://github.com/fdrgsp/cali/actions/runs/38071878420/job/114270865198",
+          "passed": 529,
+          "skipped": 1,
+          "base_checks": 12,
+          "pretrained_gui_and_launcher_checks": 8,
+          "log_sha256": "b5f8406a1780f1b4988be8669ab99cd92aa35ce2b37081a48d7ab1213ee6567a"
+        }
+      }
+    }
+  },
+  "model_rate_guidance_validation": {
+    "scope": "Model chooser, reference/cached preflight and verified-model GUI guidance use the same model-relative 1% tolerance; inference acceptance for validated model rates unchanged",
+    "source": {
+      "passed": 166,
+      "skipped": 6,
+      "duration_s": 5.29
+    },
+    "explicit_catalogue_success_and_failure_regression": {
+      "passed": 1,
+      "duration_s": 1.44
+    },
+    "installed_optional_wheel": {
+      "wheel": "cali-0.1.dev1436+gc2cd509f0.d20261010-py3-none-any.whl",
+      "sha256": "f8109003efd5ccbbcf3a383c214b2f5528fd0cd2533cf57a16bcb6172591f5da",
+      "source_sha256": {
+        "src/cali/_cascade_models.py": "84ee9cea3d70b95ee264fb69fb481068dfa33a862a0fb41ed9c2103081d7f6af",
+        "src/cali/extraction/_spike_inference/_cascade_reference.py": "77c6af3bf2c04b4dd33ca39a43bb9088182d4c84cffc18ceb34ff3bf92465d9e",
+        "src/cali/gui/_spike_output_widget.py": "08d935702e7f4ce68b7b8ccf525b42cf7bdae9ca1482805a2f857b1b71ab471b"
+      },
+      "passed": 134,
+      "duration_s": 13.7,
+      "includes_actual_pretrained_reference_cached_and_gui_runs": true
+    },
+    "installed_base_wheel": {
+      "passed": 12,
+      "duration_s": 3.73,
+      "torch_and_cascade_absent": true,
+      "non_fatal_macos_dependency_atexit_warning": true
+    },
+    "visual_snapshot": {
+      "file": "/tmp/cali-model-rate-guidance.png",
+      "sha256": "702a294d84747fc99c4aefcfb12ac6d03e91e3c64fedd31f70509df003b435ed",
+      "scope": "Actual verified 30 Hz model with configured 10/30 Hz rates; rate warning updates without re-verification"
     }
   }
 }

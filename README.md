@@ -185,6 +185,9 @@ cancellation and retry controls. Cancellation waits for the current network
 operation; incomplete models are never published. Closing the window also requests
 cancellation. **Install package...** provides dependency installation and CLI
 instructions; selecting a model never downloads weights or installs packages.
+After verification, model details show whether its rate matches the configured
+acquisition rate within the inference tolerance of 1%. This guidance updates when
+the configured rate changes; extraction still validates the actual recording timing.
 Analysis-only output controls are read-only because changing
 retained outputs requires re-extraction.
 

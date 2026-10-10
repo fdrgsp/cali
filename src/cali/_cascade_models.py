@@ -243,6 +243,17 @@ def get_cascade_catalogue(
     return tuple(entries)
 
 
+def cascade_model_rate_matches(frame_rate: float, model_rate: float) -> bool:
+    """Apply the inference tolerance relative to the authoritative model rate."""
+    return (
+        math.isfinite(frame_rate)
+        and frame_rate > 0
+        and math.isfinite(model_rate)
+        and model_rate > 0
+        and abs(frame_rate - model_rate) / model_rate <= 0.01
+    )
+
+
 def compatible_cascade_models(
     catalogue: tuple[CatalogueEntry, ...], frame_rate: float
 ) -> tuple[CatalogueEntry, ...]:
@@ -253,7 +264,7 @@ def compatible_cascade_models(
         entry
         for entry in catalogue
         if entry.sampling_rate_hint is not None
-        and math.isclose(entry.sampling_rate_hint, frame_rate, rel_tol=0.01)
+        and cascade_model_rate_matches(frame_rate, entry.sampling_rate_hint)
     )
 
 

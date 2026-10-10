@@ -210,6 +210,23 @@ def test_model_verification_shows_metadata_without_inference_or_fallback(
     assert "acausal" in outputs._info.text()
     assert "noise levels 2, 3" in outputs._info.text()
     verify.assert_called_with("chosen-model")
+    assert "Rate mismatch: configured acquisition is 10 Hz" in outputs._info.text()
+    catalogue = Mock(return_value=())
+    monkeypatch.setattr("cali._cascade_models.get_cascade_catalogue", catalogue)
+    outputs.set_frame_rate(30)
+    assert "matches this model within the allowed 1%" in outputs._info.text()
+    assert "checks the recording's acquisition timing" in outputs._info.text()
+    catalogue.side_effect = CascadeModelNotFound("Offline catalogue unavailable")
+    outputs.set_frame_rate(30.31)
+    assert "Rate mismatch" in outputs._info.text()
+    assert "30.31 Hz" in outputs._info.text()
+    assert "Model list could not be refreshed" in outputs._info.text()
+    assert outputs._model.currentText() == "chosen-model"
+    assert outputs.methods() == ("cascade",)
+    assert verify.call_count == 2  # Editing the rate never re-reads checkpoints.
+    outputs._model.setCurrentText("different-model")
+    assert "Verified chosen-model" not in outputs._info.text()
+    assert outputs._verified_model is None
 
 
 def test_method_tabs_keep_independent_thresholds_and_full_precision(

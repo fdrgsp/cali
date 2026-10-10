@@ -2,14 +2,17 @@
 
 from __future__ import annotations
 
-import math
 import threading
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 import numpy as np
 
-from cali._cascade_models import CascadeModelError, load_cascade_model
+from cali._cascade_models import (
+    CascadeModelError,
+    cascade_model_rate_matches,
+    load_cascade_model,
+)
 from cali._cascade_package import load_cascade_package
 from cali.extraction._frame_window import validate_model_timing
 from cali.logger import cali_logger
@@ -96,12 +99,7 @@ class CascadeReferenceBackend:
 
     def prepare(self, frame_rate: float) -> None:
         """Check package/device and configured rate before any ROI work."""
-        if (
-            not math.isfinite(frame_rate)
-            or frame_rate <= 0
-            or abs(frame_rate - self.model.sampling_rate) / self.model.sampling_rate
-            > 0.01
-        ):
+        if not cascade_model_rate_matches(frame_rate, self.model.sampling_rate):
             raise CascadeModelError(
                 f"Extraction rate {frame_rate:g} Hz does not match CASCADE model "
                 f"rate {self.model.sampling_rate:g} Hz (allowed 1%)."

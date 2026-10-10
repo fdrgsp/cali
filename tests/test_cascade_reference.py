@@ -154,6 +154,25 @@ def test_invalid_timing_never_calls_upstream(case: str, fake_reference: tuple) -
     assert calls == []
 
 
+@pytest.mark.parametrize(
+    ("rate", "matches"),
+    [(10.099, True), (10.1005, False), (9.901, True), (9.899, False)],
+)
+def test_catalogue_and_preflight_agree_near_rate_boundary(
+    rate: float, matches: bool, fake_reference: tuple
+) -> None:
+    from cali._cascade_models import CatalogueEntry, compatible_cascade_models
+
+    backend, _, _ = fake_reference
+    entry = CatalogueEntry("model_10Hz", "https://example.test", "", 10)
+    assert bool(compatible_cascade_models((entry,), rate)) is matches
+    if matches:
+        backend.prepare(rate)
+    else:
+        with pytest.raises(ValueError, match="does not match"):
+            backend.prepare(rate)
+
+
 def test_noise_selection_ties_and_coverage_warning(
     fake_reference: tuple, caplog: pytest.LogCaptureFixture
 ) -> None:
