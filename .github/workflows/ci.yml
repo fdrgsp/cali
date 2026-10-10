@@ -35,6 +35,10 @@ jobs:
       CALI_CASCADE_MODELS: ${{ github.workspace }}/.cascade-models
     steps:
       - uses: actions/checkout@v6
+      - name: Install Qt runtime libraries
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y libegl1 libopengl0
       - uses: astral-sh/setup-uv@v7
         with:
           python-version: ${{ matrix.python-version }}
