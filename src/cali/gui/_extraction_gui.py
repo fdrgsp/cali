@@ -58,6 +58,10 @@ from ._util import (
 FIXED = QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed
 
 
+class MissingCascadeModelError(ValueError):
+    """The selected CASCADE output needs an explicit model."""
+
+
 @dataclass(frozen=True)
 class MetadataData:
     """Data structure to hold metadata settings."""
@@ -474,6 +478,18 @@ class _ExtractionGUI(QWidget):
             and not self._cascade_enabled
         ):
             raise ValueError(CASCADE_GUI_GATE)
+
+        if (
+            trace_data
+            and "cascade" in trace_data.spike_methods
+            and not trace_data.cascade_model
+        ):
+            raise MissingCascadeModelError(
+                "Choose a CASCADE model in Extract traces → Spike inference. "
+                "Check the acquisition rate in Prepare traces, then choose a "
+                "matching model. Use Download model to add it to the local "
+                "cache if needed."
+            )
 
         settings = ExtractionSettings(
             created_at=datetime.now(),

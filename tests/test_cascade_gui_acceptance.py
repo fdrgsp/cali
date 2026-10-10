@@ -61,6 +61,57 @@ def test_run_button_extracts_and_reanalyzes_offline(
     _exercise_run_button(qtbot, tmp_path, monkeypatch, methods)
 
 
+@pytest.mark.parametrize("methods", [("cascade",), ("oasis", "cascade")])
+def test_run_button_routes_missing_model_to_selector(
+    qtbot: QtBot,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    methods: tuple,
+) -> None:
+    path = tmp_path / "gui.cali"
+    _, detection, _, _ = _seed(path, methods)
+    errors = Mock()
+    monkeypatch.setattr("cali.gui._cali_gui.show_error_dialog", errors)
+    gui = CaliGui(cascade_gui_enabled=True)
+    qtbot.addWidget(gui)
+    gui._database_path, gui._output_path = str(path), str(tmp_path)
+    gui._data = _dataset(count=256, rate=10)
+    gui._runs_panel.set_database_path(path)
+    start_worker = Mock()
+    monkeypatch.setattr(gui, "_start_run_worker", start_worker)
+    run = gui._run_cali_wdg
+    run._detection_settings_combo.addItem("Seeded masks", detection)
+    run._detection_settings_combo.setCurrentIndex(
+        run._detection_settings_combo.count() - 1
+    )
+    run._run_options_combo.setCurrentText("Extraction and Analysis (require detection)")
+    # An unfinished GUI selection is allowed; saved/headless settings stay strict.
+    gui._extraction_wdg._spike_outputs.setValue(methods, None, "cpu")
+    gui._extraction_wdg._settings_tabs.setCurrentIndex(2)
+    gui._sub_tab.setCurrentWidget(gui._analysis_tab)
+    gui.show()
+    gui.activateWindow()
+    qtbot.waitUntil(gui.isActiveWindow)
+    qtbot.mouseClick(run._run_btn, Qt.MouseButton.LeftButton)
+
+    errors.assert_called_once()
+    message = errors.call_args.args[1]
+    assert "Extract traces → Spike inference" in message
+    assert "Prepare traces" in message
+    assert "Download model" in message
+    assert "validation error" not in message
+    start_worker.assert_not_called()
+    assert gui._run_worker is None
+    assert gui._extraction_wdg._spike_outputs.methods() == methods
+    assert gui._sub_tab.currentWidget() is gui._extraction_tab
+    assert gui._extraction_wdg._settings_tabs.currentIndex() == 1
+    qtbot.waitUntil(gui._extraction_wdg._spike_outputs._model.hasFocus)
+    engine = create_cali_engine(f"sqlite:///{path}")
+    with Session(engine) as session:
+        assert not session.exec(select(Traces)).all()
+    engine.dispose()
+
+
 @pytest.mark.skipif(
     os.environ.get("CALI_CASCADE_REFERENCE_TESTS") != "1",
     reason="Pretrained GUI acceptance runs in the optional installed-wheel job",

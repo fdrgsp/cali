@@ -63,7 +63,7 @@ jobs:
         env:
           CALI_CASCADE_BASE_TESTS: '1'
           QT_QPA_PLATFORM: offscreen
-        run: .cascade-smoke/bin/python -I -Werror -m pytest --noconftest -q tests/test_cascade_base_install.py tests/test_cascade_package_loader.py tests/test_cli.py::test_gui_launch_enables_cascade_single_worker_profile tests/test_cascade_gui.py::test_install_instructions_target_current_environment_and_pin
+        run: .cascade-smoke/bin/python -I -Werror -m pytest --noconftest -q tests/test_cascade_base_install.py tests/test_cascade_package_loader.py tests/test_cli.py::test_gui_launch_enables_cascade_single_worker_profile tests/test_cascade_gui.py::test_install_instructions_target_current_environment_and_pin tests/test_cascade_gui_acceptance.py::test_run_button_routes_missing_model_to_selector
       - name: Install optional CASCADE dependency into the isolated wheel environment
         run: |
           uv pip install --python .cascade-smoke/bin/python torch --index https://download.pytorch.org/whl/cpu

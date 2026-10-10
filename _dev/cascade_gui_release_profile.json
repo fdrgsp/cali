@@ -521,11 +521,11 @@
       "url": "https://github.com/fdrgsp/cali/actions/runs/38072884020",
       "tested_revision": "69236145a35f6a1ecc762cf8a2a4717195c958c8",
       "platforms": "all",
-      "outcome_pending": true,
+      "outcome_pending": false,
       "scope": "Full macOS/Windows Python 3.11/3.12/3.13 and installed base/optional CASCADE wheel checks; separate concurrency group preserves activation macOS run",
       "dedicated_jobs_passed": true,
-      "workflow_status": "in_progress",
-      "workflow_conclusion": "",
+      "workflow_status": "completed",
+      "workflow_conclusion": "success",
       "macos_jobs": {
         "3.13": {
           "job_id": 114273774766,
@@ -533,8 +533,26 @@
           "conclusion": "success",
           "passed": 2443,
           "skipped": 17,
-          "duration_s": 686.49,
-          "log_sha256": "69f98489a195b3fbee35affb4447204a746ccf7fb43db4d6b747916f3cb5d919"
+          "log_sha256": "69f98489a195b3fbee35affb4447204a746ccf7fb43db4d6b747916f3cb5d919",
+          "duration_s": 686.49
+        },
+        "3.12": {
+          "job_id": 114273774779,
+          "url": "https://github.com/fdrgsp/cali/actions/runs/38072884020/job/114273774779",
+          "conclusion": "success",
+          "passed": 2443,
+          "skipped": 17,
+          "log_sha256": "5f15355cd24b6e51a5e66d3bf0e0b7a544a9b13b7c30e63f212cb667be604bc8",
+          "duration_s": 886.81
+        },
+        "3.11": {
+          "job_id": 114273774832,
+          "url": "https://github.com/fdrgsp/cali/actions/runs/38072884020/job/114273774832",
+          "conclusion": "success",
+          "passed": 2443,
+          "skipped": 17,
+          "log_sha256": "a432b2e665af0d53afe7a9dd3b2470c8e4944e67c87f6dbdc66589e0bfcbb3ca",
+          "duration_s": 1093.41
         }
       },
       "dedicated_jobs": {
@@ -553,6 +571,35 @@
           "passed": 529,
           "skipped": 1,
           "log_sha256": "20300502812de7ae041b2280ed7086164429b4d1a8c28b6e092cfb0a70c5dd6a"
+        }
+      },
+      "windows_jobs": {
+        "3.12": {
+          "job_id": 114273774636,
+          "url": "https://github.com/fdrgsp/cali/actions/runs/38072884020/job/114273774636",
+          "conclusion": "success",
+          "passed": 2408,
+          "skipped": 52,
+          "log_sha256": "94406ebf6d6f0b6bb2b1b955aa6a7f41c617202e854b8fb624b7723c33ab2c9a",
+          "duration_s": 1920.25
+        },
+        "3.13": {
+          "job_id": 114273774769,
+          "url": "https://github.com/fdrgsp/cali/actions/runs/38072884020/job/114273774769",
+          "conclusion": "success",
+          "passed": 2408,
+          "skipped": 52,
+          "log_sha256": "3baf496d9a5712a620ce89122e8159ac0fd04fe6db427e17767a8ced97177df0",
+          "duration_s": 2204.68
+        },
+        "3.11": {
+          "job_id": 114273774873,
+          "url": "https://github.com/fdrgsp/cali/actions/runs/38072884020/job/114273774873",
+          "conclusion": "success",
+          "passed": 2408,
+          "skipped": 52,
+          "log_sha256": "91adaf4f7dbb38affa2cc896c506855edbb06dd24e17dc75bcbb84a48f367242",
+          "duration_s": 2303.19
         }
       }
     }
@@ -599,9 +646,86 @@
       "url": "https://github.com/fdrgsp/cali/actions/runs/38074091487",
       "tested_revision": "9b42cb5d71a02fbe1eb13f653c5a34295c3179eb",
       "platforms": "macos",
-      "outcome_pending": true,
+      "outcome_pending": false,
       "scope": "Installed base/optional setup-dialog cases, pretrained GUI acceptance and full macOS Python 3.11/3.12/3.13 suites",
-      "preserves_full_platform_model_rate_run": 38072884020
+      "preserves_full_platform_model_rate_run": 38072884020,
+      "workflow_status": "completed",
+      "workflow_conclusion": "success",
+      "dedicated_jobs": {
+        "3.11": {
+          "job_id": 114277314318,
+          "url": "https://github.com/fdrgsp/cali/actions/runs/38074091487/job/114277314318",
+          "conclusion": "success",
+          "passed": 533,
+          "skipped": 1,
+          "log_sha256": "738d8629e9cbff60cbf2878b25c06fee7a3da3b865a17b66542dd45f47ef8b8a"
+        },
+        "3.13": {
+          "job_id": 114277314452,
+          "url": "https://github.com/fdrgsp/cali/actions/runs/38074091487/job/114277314452",
+          "conclusion": "success",
+          "passed": 533,
+          "skipped": 1,
+          "log_sha256": "3a75b571d31e3046d59135c65abf4aa5e271ec4cff16a3177642c9b7d8c0af51"
+        }
+      },
+      "macos_jobs": {
+        "3.12": {
+          "job_id": 114277314350,
+          "url": "https://github.com/fdrgsp/cali/actions/runs/38074091487/job/114277314350",
+          "conclusion": "success",
+          "passed": 2445,
+          "skipped": 17,
+          "log_sha256": "1c679e014db1a7bdaeb58b2ee61a29b4bbddb72664ee503be5062c1bdafe0bc0",
+          "duration_s": 864.75
+        },
+        "3.13": {
+          "job_id": 114277314391,
+          "url": "https://github.com/fdrgsp/cali/actions/runs/38074091487/job/114277314391",
+          "conclusion": "success",
+          "passed": 2445,
+          "skipped": 17,
+          "log_sha256": "aff5e774c039aa5693ef9b99366b924a401ddecaa776c18d9a9a4e2ab0ad83ca",
+          "duration_s": 1056.37
+        },
+        "3.11": {
+          "job_id": 114277314464,
+          "url": "https://github.com/fdrgsp/cali/actions/runs/38074091487/job/114277314464",
+          "conclusion": "success",
+          "passed": 2445,
+          "skipped": 17,
+          "log_sha256": "0e5940fcc78107f719e18d4ef9ebdb2fc77b3d752ab2b8997150e7a75cb6cfd2",
+          "duration_s": 949.86
+        }
+      },
+      "dedicated_jobs_passed": true
     }
+  },
+  "missing_model_run_validation": {
+    "scope": "Run-button missing-model recovery for CASCADE-only and dual outputs, before worker startup; strict saved/headless model validation unchanged",
+    "source_gui_regression": {
+      "passed": 47,
+      "skipped": 1,
+      "duration_s": 6.15
+    },
+    "installed_base_ci_command": {
+      "passed": 16,
+      "duration_s": 4.84,
+      "torch_and_cascade_absent": true
+    },
+    "installed_optional_ci_command": {
+      "passed": 12,
+      "duration_s": 11.5,
+      "includes_pretrained_gui_run": true
+    },
+    "wheel": "cali-0.1.dev1440+g514d5d841.d20261010-py3-none-any.whl",
+    "wheel_sha256": "ee471dcf14979f598eb1ba83b4956f65941cdd7637bf9474270b65b17611f44d",
+    "source_wheel_and_both_installed_modules_equal": true,
+    "checks": [
+      "actionable model/rate/download guidance",
+      "routes to Extract traces / Spike inference and focuses model selector",
+      "retains selected methods",
+      "does not start worker or write traces"
+    ]
   }
 }

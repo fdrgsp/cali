@@ -6,6 +6,27 @@
 
 ---
 
+## P8 continuation — recover from an unfinished model selection (2026-10-10)
+
+- Running extraction with CASCADE selected and no model now shows actionable
+  instructions instead of a Pydantic validation dump. The GUI opens **Extract
+  traces → Spike inference** and focuses the model selector, with guidance to
+  check the acquisition rate and download a matching model if needed.
+- Actual Run-button acceptance covers CASCADE-only and OASIS/CASCADE selections:
+  selected outputs remain intact, no worker starts and no traces are written.
+  Saved/headless settings retain strict validation. Source GUI regression passed
+  **47 tests, 1 optional case skipped**; installed base-wheel checks passed
+  **16 tests** with Torch/CASCADE absent; installed optional-wheel checks passed
+  **12 tests**, including actual pretrained extraction and offline reuse.
+  The source, wheel and both installed GUI modules match byte for byte.
+- The earlier [model-rate CI run 38072884020](https://github.com/fdrgsp/cali/actions/runs/38072884020)
+  completed successfully: Python 3.11/3.12/3.13 each passed **2443 tests, 17 skipped**
+  on macOS and **2408 tests, 52 skipped** on Windows; both dedicated CASCADE jobs
+  passed **529 tests, 1 skipped**. The [setup CI run 38074091487](https://github.com/fdrgsp/cali/actions/runs/38074091487)
+  also completed successfully: all three macOS suites passed **2445 tests,
+  17 skipped**, and both dedicated jobs passed **533 tests, 1 skipped**. These
+  results cover their respective recorded revisions, before this recovery change.
+
 ## P8 continuation — actionable setup instructions (2026-10-10)
 
 - The package-help button is now **Setup instructions...**, matching its behavior.

@@ -177,7 +177,7 @@ def test_model_catalogue_is_offline_rate_filtered_and_keeps_missing_selection(
     outputs.setValue(("cascade",), None, "cpu")
     outputs.refresh_models()
     assert outputs._model.currentText() == ""
-    with pytest.raises(ValueError, match="explicit cascade_model"):
+    with pytest.raises(ValueError, match="Choose a CASCADE model"):
         widget.to_model_settings()
 
 

@@ -56,6 +56,7 @@ from cali.gui._analysis_gui import (
 from cali.gui._detection_gui import CellposeSettingsData
 from cali.gui._extraction_gui import (
     ExtractionSettingsData,
+    MissingCascadeModelError,
 )
 from cali.gui._runs_panel import _RunsPanel
 from cali.runner._cali_runner import CaliRunner
@@ -1722,6 +1723,11 @@ class CaliGui(QMainWindow):
                     raise e
         except Exception as e:
             self._enable(True)
+            if isinstance(e, MissingCascadeModelError):
+                self._main_tab.setCurrentWidget(self._detection_extraction_tab)
+                self._sub_tab.setCurrentWidget(self._extraction_tab)
+                self._extraction_wdg._settings_tabs.setCurrentIndex(1)
+                self._extraction_wdg._spike_outputs._model.setFocus()
             msg = f"❌ Failed to run cali:\n{e}"
             show_error_dialog(self, msg)
             cali_logger.error(msg)
