@@ -958,7 +958,67 @@
       "tested_revision": "01cc30dcbd495b174e84f6611d6563a9e6b51bdf",
       "platforms": "all",
       "outcome_pending": true,
-      "scope": "Full macOS/Windows Python 3.11/3.12/3.13 and installed base/optional cache-state, action-layout and pretrained GUI acceptance checks"
+      "scope": "Full macOS/Windows Python 3.11/3.12/3.13 and installed base/optional cache-state, action-layout and pretrained GUI acceptance checks",
+      "status": "in_progress",
+      "dedicated_jobs": {
+        "3.11": {
+          "job_id": 114309698122,
+          "url": "https://github.com/fdrgsp/cali/actions/runs/38085045144/job/114309698122",
+          "conclusion": "success",
+          "passed": 551,
+          "skipped": 1,
+          "log_sha256": "3aa6463e81d082ef5566bb054fd02f62f7b89f68065790fd60e21873828b1f61"
+        },
+        "3.13": {
+          "job_id": 114309697894,
+          "url": "https://github.com/fdrgsp/cali/actions/runs/38085045144/job/114309697894",
+          "conclusion": "success",
+          "passed": 551,
+          "skipped": 1,
+          "log_sha256": "58a2cc461968a1b33e985e6fcadbbfbf3da3f720035bf51a1d2c383b78808b60"
+        }
+      },
+      "dedicated_jobs_passed": true
     }
+  },
+  "first_use_gui_workflow_validation": {
+    "scope": "Empty-cache catalogue selection, explicit background download, actual pretrained extraction and database-only reanalysis through GUI controls",
+    "model_name": "Global_EXC_30Hz_smoothing25ms",
+    "model_manifest_sha256": "ac8954174ba0a01a2d929a7e8b3fc7e3a4365d5c01f5e262d2b597822fcae184",
+    "spike_methods_cases": [
+      [
+        "cascade"
+      ],
+      [
+        "oasis",
+        "cascade"
+      ]
+    ],
+    "empty_cache_before_selection": true,
+    "transfers_or_cache_writes_on_selection": false,
+    "transfer_fixture": "Local exact pinned catalogue and archive of verified pretrained weights replace HTTPS transfer only",
+    "download_worker_and_model_validation_mocked": false,
+    "pretrained_torch_inference_mocked": false,
+    "download_transfers_off_main_thread": true,
+    "extraction_requires_no_further_transfers": true,
+    "database_only_reanalysis_loads_model_or_package": false,
+    "raw_traces_and_saved_spike_samples_preserved": true,
+    "inference_manifest_verified_in_database": true,
+    "inference_or_storage_behavior_changed": false,
+    "tests": {
+      "source": {
+        "passed": 11,
+        "duration_s": 7.01
+      },
+      "optional_installed_wheel": {
+        "passed": 21,
+        "duration_s": 8.71
+      }
+    },
+    "exact_optional_workflow_ci_command_used_locally": true,
+    "wheel": "cali-0.1.dev1445+gfcd599b77.d20261010-py3-none-any.whl",
+    "wheel_sha256": "ad80add55ef37830bb29b15b529f3f59841732d73c9d0cf6e8d9a47895527424",
+    "wheel_reused_without_production_source_changes": true,
+    "dedicated_ci_includes_new_acceptance_cases": true
   }
 }

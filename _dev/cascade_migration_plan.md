@@ -6,6 +6,30 @@
 
 ---
 
+## P8 acceptance — first-use download through saved reanalysis (2026-10-10)
+
+- Added complete Run-button acceptance starting with a genuinely empty model
+  cache. At 30 Hz, the bundled catalogue offers the pinned pretrained model;
+  selecting it enables Download model. The background worker validates the
+  catalogue, extracts and publishes the weights, and verifies the exact manifest.
+  Selecting/rate-filtering alone performs no transfers or cache writes.
+- Both default CASCADE-only and checked OASIS/CASCADE groups then run actual
+  pretrained Torch inference, save two ROI traces with the requested outputs,
+  and perform database-only reanalysis without model/package loading. Reanalysis
+  preserves the original raw traces and all saved spike samples. Inference records
+  must retain the pinned weights manifest.
+- Only HTTPS transfer is replaced by local catalogue/archive bytes in these
+  repeatable GUI tests; model validation, download worker, publication, extraction,
+  persistence and analysis use the production implementation. No inference or
+  storage behavior changed. Existing dedicated installed-wheel CI automatically
+  includes both new cases in its GUI acceptance module.
+- Local acceptance: **11 source tests in 7.01 s** and **21 installed optional-wheel
+  tests in 8.71 s**, using the exact dedicated GUI CI command. Repository hooks
+  pass. [Cache-status run 38085045144](https://github.com/fdrgsp/cali/actions/runs/38085045144)
+  has passed both dedicated CASCADE Python 3.11/3.13 jobs (**551 tests, 1 skipped**
+  each); its broader macOS/Windows suites remain in progress. This run precedes
+  the new first-use acceptance cases.
+
 ## P8 continuation — selected-model cache status (2026-10-10)
 
 - Selecting a model now shows whether weights are absent, local cache files are
