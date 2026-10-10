@@ -1,10 +1,55 @@
 # Adding CASCADE spike inference to `cali`
 
 **Branch**: `cascade` (branched from `main` at `336e7b5`)
-**Status**: P1/P2a and prerequisite P2b/P2c implemented; pinned CASCADE package, P4 verified model cache/download CLI, P3a pretrained reference adapter, experimental P3b cached service, and P5 headless runner/persistence/export integration implemented; controlled Step 10 extraction/storage measurements collected and two integration bugs fixed; schema-11 lossless trace-array codec implemented; schema-13 byte-shuffle codec repairs the complete-image storage budget with exact samples; P6a shared ROI calculations, CASCADE ROI metrics, P6b method-bound FOV populations, P6c1 method-aware exports, P6c2a plot registry/ROI consumers, P6c2b population/burst/matrix consumers, P6c2c evoked/sorted/PCA consumers, P6c2d aligned comparisons and P6d full-runner parity/failure isolation implemented; schema-12 population coordinates added; headless CASCADE extraction and spike analysis enabled; controlled full-analysis and 100 × 6000 complete-image measurements with database audits complete, default single-worker FOV startup optimized; versioned byte-shuffle reader/migration and installed-wheel consumer checks complete; schema-14 method-qualified noise QC summaries, exports and advisory batch checks implemented; P8 GUI settings/controls, cancellable background model download, timing-source/resolved-discard previews and stored-results selection implemented behind the extraction release gate; camera-sized single-worker CPU/MPS memory measurements complete; remaining release evidence (remote dedicated CI, memory-budget acceptance, licensing review) and GUI extraction exposure pending; real-plate benchmark and CUDA validation deferred, upstream packaging submission dropped (see Scope decisions, 2026-10-05)
+**Status**: P1/P2a and prerequisite P2b/P2c implemented; pinned CASCADE package, P4 verified model cache/download CLI, P3a pretrained reference adapter, experimental P3b cached service, and P5 headless runner/persistence/export integration implemented; controlled Step 10 extraction/storage measurements collected and two integration bugs fixed; schema-11 lossless trace-array codec implemented; schema-13 byte-shuffle codec repairs the complete-image storage budget with exact samples; P6a shared ROI calculations, CASCADE ROI metrics, P6b method-bound FOV populations, P6c1 method-aware exports, P6c2a plot registry/ROI consumers, P6c2b population/burst/matrix consumers, P6c2c evoked/sorted/PCA consumers, P6c2d aligned comparisons and P6d full-runner parity/failure isolation implemented; schema-12 population coordinates added; headless CASCADE extraction and spike analysis enabled; controlled full-analysis and 100 × 6000 complete-image measurements with database audits complete, default single-worker FOV startup optimized; versioned byte-shuffle reader/migration and installed-wheel consumer checks complete; schema-14 method-qualified noise QC summaries, exports and advisory batch checks implemented; P8 GUI settings/controls, cancellable background model download, timing-source/resolved-discard previews and stored-results selection implemented behind the extraction release gate; camera-sized single-worker CPU/MPS memory measurements complete; dedicated remote installed-wheel CASCADE CI passed on Python 3.11/3.13; remaining release evidence (memory-budget acceptance, licensing review) and GUI extraction exposure pending; real-plate benchmark and CUDA validation deferred, upstream packaging submission dropped (see Scope decisions, 2026-10-05)
 **Date**: 2026-10-10
 
 ---
+
+## P8 continuation — dedicated remote CI acceptance (2026-10-10)
+
+- With the user's authorization, the completed `cascade` commits were pushed and
+  `ci.yml` was dispatched on the branch. Both dedicated Ubuntu installed-wheel
+  CASCADE jobs passed on Python **3.11 and 3.13** at
+  `99a2c351a3b737f42b33752bacb3bfb02b6b6883`:
+  [CI run 38062573664](https://github.com/fdrgsp/cali/actions/runs/38062573664).
+  Each job passed **524 tests, 1 optional case skipped**, covering the base wheel
+  without Torch/CASCADE, exact source pin, native OASIS regression, pretrained
+  reference/cached/service inference, extraction/persistence/offline reuse,
+  GUI Run-button/lifecycle acceptance, codec/migration, method-bound analysis,
+  noise QC, exports and plots. The optional pretrained GUI test ran and passed.
+- The first remote attempt exposed Ubuntu's missing `libEGL.so.1` during pytest-qt
+  startup, before tests ran. The dedicated job now installs `libegl1` and
+  `libopengl0`; the next attempt passed the clean base-wheel check on both versions.
+- That attempt then exposed tiny native floating-point differences between the
+  archived macOS OASIS values and Ubuntu (approximately 10⁻¹⁴–10⁻¹⁶). A checked-in
+  original `_process_roi_trace` from `8340eaf9ef2e398bb4d3e3bcafb5289841ecea06`
+  now supplies the native-platform oracle, using plain attribute containers for
+  the former schema fields. Its method AST is unchanged. New traces, noise,
+  coefficients, inline metrics and activity flags compare **exactly** with the
+  original calculation on each platform; no numerical tolerance was relaxed.
+  The archived JSON fixture remains unchanged. Local installed-wheel package and
+  inference validation passed **14 tests in 3.87 s** before the successful rerun.
+- `cascade_remote_ci_validation.json` records the tested revision, workflow and
+  reference identities, both successful job URLs/counts and the earlier failures.
+  The dedicated jobs first passed at `a726ea0` and passed again after the platform
+  fixes at `99a2c35`. The broader first run was cancelled to release its logs after
+  more than 15 minutes. Windows was progressing slowly and reported two failures;
+  all three native macOS Qt jobs stopped after the same plot-selection test.
+- ZIP validation now checks the original member name before `ZipInfo` normalizes
+  Windows separators or truncates NUL bytes; the regression fixture preserves
+  unsafe names when created on Windows too. GUI source reset closes graph-engine
+  connections, and directory initialization opens the new graph engine after
+  database creation/replacement. The overwrite regression verifies a held SQLite
+  connection is closed before replacement. The affected matrix passed **145 tests,
+  1 optional case skipped in 18.87 s**; repository hooks, including mypy, pass.
+  Its test-modified database fixture was backed up with verified bytes and restored.
+  Full platform CI now uses the locally validated offscreen Qt platform and fixed
+  single CPU threads. Full macOS/Windows jobs are still running on the corrected
+  revision while this record is prepared.
+- The dedicated remote CI gate is complete. Normal GUI CASCADE extraction
+  continues to wait for the accepted memory scope/budget and the project's
+  licensing review before distribution; cached inference remains opt-in.
 
 ## P8 continuation — full-frame CPU/MPS memory evidence (2026-10-10)
 
@@ -138,9 +183,9 @@ below, which are kept as historical records.
   expected outcome is to promote the cached service once the deferred real-plate
   benchmark confirms its speed and memory advantage on real recordings.
 
-Remaining release gates for GUI extraction exposure: the first remote run of the
-dedicated CASCADE CI job, an accepted representative complete-pipeline memory budget,
-and the licensing review before distribution. Local GUI technical run acceptance is
+Remaining release gates for GUI extraction exposure: an accepted representative
+complete-pipeline memory budget and the licensing review before distribution.
+The dedicated remote CASCADE CI job and local GUI technical run acceptance are
 recorded in the 2026-10-10 continuation above. Camera-sized CPU/MPS memory measurements
 are also complete for one extraction worker and one analysis process; budget acceptance
 remains pending.
