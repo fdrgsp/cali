@@ -136,17 +136,20 @@ class _SpikeOutputWidget(QGroupBox):
         self._status.setWordWrap(True)
         self._info = QLabel(self)
         self._info.setWordWrap(True)
+        self._cache_info = guidance("", self)
         self._cascade_parameters = QWidget(self)
         form = QFormLayout(self._cascade_parameters)
         form.setContentsMargins(0, 0, 0, 0)
         form.addRow("Pretrained model:", self._model)
         form.addRow("Compute device:", self._device)
-        actions = QGridLayout()
+        actions_widget = QWidget(self._cascade_parameters)
+        actions = QGridLayout(actions_widget)
+        actions.setContentsMargins(0, 0, 0, 0)
         actions.addWidget(self._refresh, 0, 0)
         actions.addWidget(self._verify, 0, 1)
         actions.addWidget(self._download, 1, 0)
         actions.addWidget(self._install, 1, 1)
-        form.addRow(actions)
+        form.addRow(actions_widget)
         cascade_layout = QVBoxLayout(self._cascade)
         cascade_layout.addWidget(
             guidance(
@@ -159,6 +162,7 @@ class _SpikeOutputWidget(QGroupBox):
         )
         cascade_layout.addWidget(self._cascade_parameters)
         cascade_layout.addWidget(self._info)
+        cascade_layout.addWidget(self._cache_info)
         cascade_layout.addWidget(self._status)
 
         oasis_layout = QVBoxLayout(self._oasis)
@@ -300,7 +304,8 @@ class _SpikeOutputWidget(QGroupBox):
         selected = bool(self._model.currentText().strip())
         self._download.setEnabled(enabled and selected)
         self._download.setToolTip(
-            "Download the chosen model weights to the local cache and verify them."
+            "Download missing model weights, or reuse and verify the existing "
+            "local model. Existing model files are not replaced."
             if selected
             else "Choose a pretrained model first to enable downloading its weights."
         )
@@ -328,6 +333,7 @@ class _SpikeOutputWidget(QGroupBox):
                 get_cascade_catalogue(allow_bundled=True), self._frame_rate
             )
         except (CascadeModelError, OSError) as error:
+            self._update_cache_info()
             if (
                 self._verified_model is not None
                 and selected.strip() == self._verified_model.name
@@ -349,6 +355,7 @@ class _SpikeOutputWidget(QGroupBox):
         self._update_info()
 
     def _update_info(self) -> None:
+        self._update_cache_info()
         if not self._model.currentText().strip():
             self._verified_model = None
             self._info.setText(
@@ -378,6 +385,45 @@ class _SpikeOutputWidget(QGroupBox):
             else "Model availability and rate are checked before extraction."
         )
         self._update_enabled()
+
+    def _update_cache_info(self) -> None:
+        """Describe local files without reading checkpoints or importing Torch."""
+        from cali._cascade_models import (
+            CascadeModelError,
+            _model_name,
+            cascade_model_dir,
+        )
+
+        name = self._model.currentText().strip()
+        self._cache_info.setVisible(bool(name))
+        if not name:
+            self._cache_info.clear()
+            return
+        try:
+            path = cascade_model_dir() / _model_name(name)
+            if not path.is_dir():
+                message = f"Weights not downloaded. Use Download model. Cache: {path}"
+            elif (
+                not (path / "manifest.json").is_file()
+                or not (path / "config.yaml").is_file()
+            ):
+                message = (
+                    f"Local cache is incomplete: {path}. "
+                    "Use Verify model to see which files are missing."
+                )
+            elif self._verified_model is not None and self._verified_model.name == name:
+                message = (
+                    f"Cache last verified: {path}. "
+                    "Extraction verifies the files again before inference."
+                )
+            else:
+                message = (
+                    f"Local model files found: {path}. "
+                    "Use Verify model to check their configuration and checksums."
+                )
+        except (CascadeModelError, OSError) as error:
+            message = f"Cannot inspect the selected model cache: {error}"
+        self._cache_info.setText(message)
 
     def _download_model(self) -> None:
         from cali._cascade_models import cascade_model_dir, download_cascade_model
@@ -445,6 +491,7 @@ class _SpikeOutputWidget(QGroupBox):
     @Slot()  # type: ignore[untyped-decorator]
     def _on_model_download_finished(self) -> None:
         self._download_worker = None
+        self._update_cache_info()
         self._update_enabled()
 
     def _show_install_instructions(self) -> None:
@@ -507,6 +554,7 @@ class _SpikeOutputWidget(QGroupBox):
 
         name = self._model.currentText().strip()
         self._verified_model = None
+        self._update_cache_info()
         if not name:
             self._info.setText("Choose a model explicitly before verifying its cache.")
             return
@@ -542,3 +590,4 @@ class _SpikeOutputWidget(QGroupBox):
             f"Minimum retained length: {model.minimum_frames} frames. "
             f"{rate_status}"
         )
+        self._update_cache_info()

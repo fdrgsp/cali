@@ -215,6 +215,44 @@ def test_fresh_install_offers_models_and_explains_download_state(
     fetch.assert_not_called()
 
 
+def test_selected_model_cache_status_is_offline_and_does_not_claim_verification(
+    qtbot: QtBot, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    root = tmp_path / "model-cache"
+    monkeypatch.setenv("CALI_CASCADE_MODELS", str(root))
+    load = Mock(side_effect=AssertionError("Selecting a model must not verify weights"))
+    fetch = Mock(side_effect=AssertionError("Selecting a model must stay offline"))
+    monkeypatch.setattr("cali._cascade_models.load_cascade_model", load)
+    monkeypatch.setattr("cali._cascade_models._fetch_url", fetch)
+    widget = _ExtractionGUI(cascade_enabled=True)
+    qtbot.addWidget(widget)
+    outputs = widget._spike_outputs
+    name = "Global_EXC_10Hz_smoothing200ms"
+    outputs._model.setCurrentText(name)
+    assert "Weights not downloaded" in outputs._cache_info.text()
+    assert str(root / name) in outputs._cache_info.text()
+    assert not root.exists()
+    folder = root / name
+    folder.mkdir(parents=True)
+    outputs.refresh_models()
+    assert "Local cache is incomplete" in outputs._cache_info.text()
+    (folder / "manifest.json").write_text("unverified manifest")
+    (folder / "config.yaml").write_text("unverified configuration")
+    outputs.refresh_models()
+    assert "Local model files found" in outputs._cache_info.text()
+    assert "Use Verify model" in outputs._cache_info.text()
+    assert "last verified" not in outputs._cache_info.text()
+    outputs._model.setCurrentText("another-model")
+    assert "Weights not downloaded" in outputs._cache_info.text()
+    outputs._model.setCurrentText("../outside-cache")
+    assert "must not contain paths" in outputs._cache_info.text()
+    outputs._model.setCurrentText("")
+    assert outputs._cache_info.text() == ""
+    assert outputs._cache_info.isHidden()
+    load.assert_not_called()
+    fetch.assert_not_called()
+
+
 @pytest.mark.parametrize("platform", ["darwin", "win32"])
 def test_install_instructions_target_current_environment_and_pin(
     qtbot: QtBot, monkeypatch: pytest.MonkeyPatch, tmp_path: Path, platform: str
@@ -307,6 +345,9 @@ def test_model_verification_shows_metadata_without_inference_or_fallback(
 
     widget = _ExtractionGUI(cascade_enabled=True)
     qtbot.addWidget(widget)
+    widget.resize(730, 820)
+    widget._settings_tabs.setCurrentIndex(1)
+    widget.show()
     outputs = widget._spike_outputs
     outputs.setValue(("cascade",), "chosen-model", "mps")
     verify = Mock(
@@ -322,7 +363,7 @@ def test_model_verification_shows_metadata_without_inference_or_fallback(
         sampling_rate=30,
         smoothing=0.025,
         causal_kernel=False,
-        noise_levels=(2, 3),
+        noise_levels=tuple(range(2, 10)),
         ensemble_size=5,
         minimum_frames=65,
     )
@@ -331,6 +372,17 @@ def test_model_verification_shows_metadata_without_inference_or_fallback(
     assert "25 ms" in outputs._info.text()
     assert "acausal" in outputs._info.text()
     assert "noise levels 2, 3" in outputs._info.text()
+    qtbot.waitUntil(
+        lambda: all(
+            button.height() >= button.minimumSizeHint().height()
+            for button in (
+                outputs._refresh,
+                outputs._verify,
+                outputs._download,
+                outputs._install,
+            )
+        )
+    )
     verify.assert_called_with("chosen-model")
     assert "Rate mismatch: configured acquisition is 10 Hz" in outputs._info.text()
     catalogue = Mock(return_value=())

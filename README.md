@@ -164,6 +164,10 @@ inference**, check CASCADE and choose a model matching the acquisition rate in
 **Prepare traces**. **Download model** becomes enabled after a model is selected;
 click it to download and verify the weights. If no models match the configured
 rate, the GUI explains that instead of offering an incompatible model.
+The selected model's cache status and location are shown below the controls.
+Finding local files does not mark them verified: **Verify model** checks their
+configuration and checksums. Downloading an already cached model reuses and
+verifies it; existing model files are not replaced.
 
 The GUI's **Setup instructions...** action shows the checkout command above and an
 alternative for an installed wheel. The wheel command uses `uv pip install --python`

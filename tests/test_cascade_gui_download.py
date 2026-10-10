@@ -52,13 +52,17 @@ def test_explicit_download_is_background_verified_and_reuses_cache(
     monkeypatch.setattr(models, "_fetch_url", fetch)
     assert fake_download["calls"] == []
     assert not models.cascade_model_dir().exists()
+    assert "Weights not downloaded" in outputs._cache_info.text()
     qtbot.mouseClick(outputs._download, Qt.MouseButton.LeftButton)
     qtbot.waitUntil(lambda: not outputs.is_downloading(), timeout=5000)
     assert len(fake_download["calls"]) == 2
+
     assert threads and all(thread != get_ident() for thread in threads)
     assert models.load_cascade_model(NAME).minimum_frames == 65
     assert "Verified" in outputs._download_status.text()
     assert "200 ms" in outputs._info.text()
+    assert "Cache last verified" in outputs._cache_info.text()
+    assert str(models.cascade_model_dir() / NAME) in outputs._cache_info.text()
     assert outputs._model.currentText() == NAME
     assert outputs.methods() == ("cascade",)
     assert outputs._device.currentData() == "mps"
@@ -67,6 +71,15 @@ def test_explicit_download_is_background_verified_and_reuses_cache(
     qtbot.mouseClick(outputs._download, Qt.MouseButton.LeftButton)
     qtbot.waitUntil(lambda: not outputs.is_downloading(), timeout=5000)
     assert len(fake_download["calls"]) == 2
+
+    def damaged_cache(*args: Any, **kwargs: Any) -> models.CascadeModel:
+        raise models.CascadeModelError("checkpoint checksum changed")
+
+    monkeypatch.setattr(models, "load_cascade_model", damaged_cache)
+    qtbot.mouseClick(outputs._verify, Qt.MouseButton.LeftButton)
+    assert "checkpoint checksum changed" in outputs._info.text()
+    assert "Local model files found" in outputs._cache_info.text()
+    assert "last verified" not in outputs._cache_info.text()
 
 
 @pytest.fixture
@@ -116,6 +129,8 @@ def test_download_keeps_gui_responsive_and_preserves_newer_settings(
     assert outputs._device.currentData() == "cpu"
     assert NAME in outputs._download_status.text()
     assert "Verified" not in outputs._info.text()
+    assert "Weights not downloaded" in outputs._cache_info.text()
+    assert "another-model" in outputs._cache_info.text()
     assert not outputs._download.isEnabled()
     assert not outputs._cascade.isEnabled()
     assert len(fake_download["calls"]) == 2
@@ -129,6 +144,7 @@ def test_failed_download_preserves_selection_and_can_retry(
     qtbot.mouseClick(outputs._download, Qt.MouseButton.LeftButton)
     qtbot.waitUntil(lambda: not outputs.is_downloading(), timeout=5000)
     assert "Download failed" in outputs._download_status.text()
+    assert "Weights not downloaded" in outputs._cache_info.text()
     assert not (models.cascade_model_dir() / NAME).exists()
     assert not list(models.cascade_model_dir().glob(".*"))
     assert outputs.methods() == ("cascade",)
@@ -160,6 +176,7 @@ def test_cancelled_download_leaves_no_partial_model_and_can_retry(
         release.set()
     qtbot.waitUntil(lambda: not outputs.is_downloading(), timeout=5000)
     assert "Cancelled" in outputs._download_status.text()
+    assert "Weights not downloaded" in outputs._cache_info.text()
     assert not (models.cascade_model_dir() / NAME).exists()
     assert not list(models.cascade_model_dir().glob(".*"))
     assert outputs.methods() == ("cascade",)

@@ -6,6 +6,33 @@
 
 ---
 
+## P8 continuation — selected-model cache status (2026-10-10)
+
+- Selecting a model now shows whether weights are absent, local cache files are
+  incomplete, files are present but not verified, or the cache was last verified.
+  The cache path is selectable. Selection/refresh inspects file presence only:
+  it does not read checkpoints, import Torch, fetch weights or create a cache.
+  Verify model and extraction retain the authoritative checksum/configuration checks.
+- Status follows the current selection after background downloads, errors and
+  cancellation. Failed re-verification clears the previous verified status;
+  switching models never carries another model's verification into the new choice.
+  Invalid names are rejected before inspecting a path outside the model cache.
+  Download guidance explains that existing models are reused rather than replaced.
+- Expanded details exposed a layout issue in the nested action grid. Its controls
+  now have their own widget, preserving readable button heights as details wrap.
+  Source regression and installed base/optional CI commands cover cache states,
+  explicit/background verification and the action layout, with pretrained GUI
+  extraction/offline reuse included in the optional wheel checks.
+  Final local checks: **106 source tests in 5.09 s**, **23 base-wheel tests in
+  4.06 s** and **19 optional-wheel tests in 9.96 s**. Source/wheel/installed GUI
+  bytes match; hooks pass, and real cache states were rendered and reviewed.
+- Both preceding CI runs are fully successful. [Fresh-install run 38078439881](https://github.com/fdrgsp/cali/actions/runs/38078439881)
+  passed **2451 tests, 17 skipped** on each macOS Python 3.11/3.12/3.13 suite and
+  **545 tests, 1 skipped** in each dedicated CASCADE job. [Missing-model run 38077573810](https://github.com/fdrgsp/cali/actions/runs/38077573810)
+  passed **2447 tests, 17 skipped** on each macOS suite, **2412 tests, 52 skipped**
+  on each Windows suite and **537 tests, 1 skipped** in each dedicated job. These
+  results cover the respective recorded revisions before this cache-status change.
+
 ## P8 fix — model choices on a fresh install (2026-10-10)
 
 - Installing the CASCADE extra does not install pretrained weights. The GUI used
