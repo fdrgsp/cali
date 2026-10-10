@@ -35,13 +35,11 @@ def runner() -> CaliRunner:
 def test_cali_runner_real_cellpose(
     test_db_path: Path, test_experiment: Experiment, data_path: Path
 ) -> None:
-    """Test running real cellpose detection (slow, for coverage).
+    """Run real Cellpose on CPU and verify persisted nonempty detections.
 
-    This test runs the actual cellpose model to ensure coverage of the
-    detection code path. It is marked as slow and should be skipped in
-    fast CI runs using: pytest -m "not slow"
+    Keep the general pipeline smoke test independent of the runner's GPU.
+    Automatically selected MPS hardware can change detections in this fixture.
     """
-    from cellpose import core
 
     runner = CaliRunner()
 
@@ -51,7 +49,7 @@ def test_cali_runner_real_cellpose(
         diameter=30.0,
         cellprob_threshold=0.0,
         flow_threshold=0.4,
-        use_gpu=core.use_gpu(),
+        use_gpu=False,
     )
 
     runner.run(

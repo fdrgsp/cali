@@ -8,9 +8,17 @@ on:
       - "v*"
   pull_request: {}
   workflow_dispatch:
+    inputs:
+      platforms:
+        description: Platforms to validate
+        type: choice
+        default: all
+        options:
+          - all
+          - macos
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.ref }}-${{ inputs.platforms || 'all' }}
   cancel-in-progress: true
 
 jobs:
@@ -105,7 +113,7 @@ jobs:
       fail-fast: false
       matrix:
         python-version: ['3.11', '3.12', '3.13']
-        platform: [macos-latest, windows-latest]
+        platform: ${{ fromJSON(inputs.platforms == 'macos' && '["macos-latest"]' || '["macos-latest", "windows-latest"]') }}
         resolution: [highest]
 
     steps:
