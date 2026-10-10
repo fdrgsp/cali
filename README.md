@@ -131,14 +131,17 @@ Replace `{VERSION}` with your CUDA version (e.g. `cu126`, `cu128`, `cu130`). Run
 
 ##### Building on macOS
 
-If you encounter build errors with `oasis-deconv` (especially SDK-related errors), set these environment variables before installing:
+If building `oasis-deconv` fails with a missing SDK path or `ld: library 'c++' not found`, select the SDK from your active Xcode installation. Older Python builds can contain a path to the SDK used to build Python, even when that SDK is absent on your Mac. Override that path for compilation and linking:
 
 ```bash
-export SDKROOT=/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk
-export LDFLAGS="-L${SDKROOT}/usr/lib"
+export SDKROOT="$(xcrun --sdk macosx --show-sdk-path)"
+export CFLAGS="-isysroot \"$SDKROOT\""
+export CXXFLAGS="-isysroot \"$SDKROOT\""
+export LDFLAGS="-isysroot \"$SDKROOT\""
+uv sync --extra cascade
 ```
 
-Then run your installation command.
+Keep any Cellpose extra flags you use, or omit `--extra cascade` for a base install. Setting `SDKROOT` alone may leave the stale linker flag in place. If `xcrun` cannot find an SDK, install Xcode Command Line Tools with `xcode-select --install`, then retry.
 
 ##### Optional CASCADE dependency (migration branch)
 

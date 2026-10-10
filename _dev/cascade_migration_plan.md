@@ -6,6 +6,22 @@
 
 ---
 
+## Checkout recovery — stale macOS SDK in Python 3.13.0 (2026-10-10)
+
+- The reported `uv sync` failure compiled OASIS but failed to link it: the
+  interpreter's build settings embedded the absent Xcode 15.2 / macOS 14.2 SDK.
+  The active Xcode installation provides macOS 26.5. Selecting that SDK with
+  `xcrun` and overriding `CFLAGS`, `CXXFLAGS` and `LDFLAGS` repaired the unchanged
+  OASIS 0.2.0 source build. `SDKROOT` alone reproduced the stale-linker failure.
+- `uv sync --locked --extra cascade` completed with the SDK overrides. The local
+  checkout passed an OASIS deconvolution smoke check and exact pinned CascadeTorch
+  source verification. **10 GUI acceptance/launcher tests passed in 11.33 s**,
+  including actual pretrained extraction and offline reuse, using a temporary
+  pytest-qt dependency through `uv run --no-sync --with pytest-qt`.
+- README troubleshooting now discovers the active SDK instead of assuming a
+  Command Line Tools installation path and explains the compiler/linker override.
+  No dependency pin, inference algorithm or system Xcode configuration changed.
+
 ## P8 continuation — recover from an unfinished model selection (2026-10-10)
 
 - Running extraction with CASCADE selected and no model now shows actionable
