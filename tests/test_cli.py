@@ -18,7 +18,7 @@ TEST_DB = Path(__file__).parent / "test_data" / "data_and_db_for_tests" / "test_
 
 
 def test_gui_launch_enables_cascade_single_worker_profile(
-    qtbot: QtBot, monkeypatch: pytest.MonkeyPatch
+    qtbot: QtBot, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     from qtpy.QtGui import QIcon
     from qtpy.QtWidgets import QApplication
@@ -30,6 +30,13 @@ def test_gui_launch_enables_cascade_single_worker_profile(
     monkeypatch.setattr("qtpy.QtWidgets.QApplication", lambda _: app)
     monkeypatch.setattr(app, "exec", lambda: 0)
     monkeypatch.setattr("superqt.QIconifyIcon", lambda *args, **kwargs: QIcon())
+    icon = tmp_path / "icon.svg"
+    icon.write_text(
+        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">'
+        '<rect width="24" height="24"/></svg>'
+    )
+    monkeypatch.setattr("pyconify.api.svg_path", lambda *args, **kwargs: icon)
+    monkeypatch.setattr("superqt.iconify.svg_path", lambda *args, **kwargs: icon)
     monkeypatch.setattr(sys, "excepthook", sys.excepthook)
     launched = []
 

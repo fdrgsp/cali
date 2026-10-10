@@ -6,6 +6,26 @@
 
 ---
 
+## P8 continuation — installed launcher CI coverage (2026-10-10)
+
+The dedicated wheel CI job now runs the real normal-launch smoke twice: in the
+base installation with Torch/CASCADE absent, and after the optional dependency
+is installed alongside the pretrained GUI run/lifecycle cases. The smoke uses
+explicit local icons and a mocked event loop, while constructing the real GUI,
+checking CASCADE selection, explicit model choice and one-worker defaults, and
+selecting OASIS explicitly. It never starts an inference job or downloads a model.
+
+Local isolated-wheel validation: **12 base-package/launcher checks passed in
+42.70 s** with Torch/CASCADE absent; **8 optional pretrained GUI/launcher checks
+passed in 6.93 s** with explicit offline icons. The base command exits successfully;
+a macOS dependency emits a non-fatal deprecated `_destroy` atexit callback warning
+after pytest finishes. Hooks pass.
+
+The full follow-up run for `208d1e2` also passed Windows Python 3.13:
+**2399 passed, 52 skipped in 2442.30 s**. Windows 3.11/3.12 remain running.
+The macOS-scoped activation run for `03644e3` is superseded by this CI coverage
+continuation; the separate full-platform run retains its Windows jobs.
+
 ## P8 continuation — normal development launcher enabled (2026-10-10)
 
 The user approved enabling CASCADE in the development GUI with the prepared

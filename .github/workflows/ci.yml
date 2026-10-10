@@ -62,7 +62,8 @@ jobs:
       - name: Verify installed base wheel with Torch and CASCADE absent
         env:
           CALI_CASCADE_BASE_TESTS: '1'
-        run: .cascade-smoke/bin/python -I -Werror -m pytest --noconftest -q tests/test_cascade_base_install.py tests/test_cascade_package_loader.py
+          QT_QPA_PLATFORM: offscreen
+        run: .cascade-smoke/bin/python -I -Werror -m pytest --noconftest -q tests/test_cascade_base_install.py tests/test_cascade_package_loader.py tests/test_cli.py::test_gui_launch_enables_cascade_single_worker_profile
       - name: Install optional CASCADE dependency into the isolated wheel environment
         run: |
           uv pip install --python .cascade-smoke/bin/python torch --index https://download.pytorch.org/whl/cpu
@@ -88,12 +89,12 @@ jobs:
           PYTEST_RUNNING: '1'
           QT_QPA_PLATFORM: offscreen
         run: .cascade-smoke/bin/python -I -m pytest --noconftest -q tests/test_cascade_extraction.py tests/test_cascade_runner_analysis.py -k pretrained
-      - name: Verify GUI run lifecycle and pretrained offline reanalysis
+      - name: Verify normal GUI launcher, run lifecycle and pretrained offline reanalysis
         env:
           CALI_CASCADE_REFERENCE_TESTS: '1'
           PYTEST_RUNNING: '1'
           QT_QPA_PLATFORM: offscreen
-        run: .cascade-smoke/bin/python -I -m pytest --noconftest -q tests/test_cascade_gui_acceptance.py
+        run: .cascade-smoke/bin/python -I -m pytest --noconftest -q tests/test_cascade_gui_acceptance.py tests/test_cli.py::test_gui_launch_enables_cascade_single_worker_profile
       - name: Verify installed-wheel trace codec, migration, ROI/FOV, noise QC, export, and plot semantics
         env:
           QT_QPA_PLATFORM: offscreen

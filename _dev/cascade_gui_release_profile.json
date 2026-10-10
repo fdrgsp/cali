@@ -322,7 +322,18 @@
         "log_sha256": "cc053fd3fc04cbd8118c019612526f739d111dda96f88c5605b11f5ccb459a9f"
       }
     },
-    "windows_jobs_pending": true
+    "windows_jobs_pending": true,
+    "windows_jobs": {
+      "3.13": {
+        "job_id": 114261905417,
+        "url": "https://github.com/fdrgsp/cali/actions/runs/38068833375/job/114261905417",
+        "conclusion": "success",
+        "passed": 2399,
+        "skipped": 52,
+        "duration_s": 2442.3,
+        "log_sha256": "b101505bac1ce1027c984ee6a5e1bd0607adf214317c5c65ead2cbaf1f25b60d"
+      }
+    }
   },
   "development_activation_validation": {
     "launcher_regression": {
@@ -357,7 +368,34 @@
       "deselected": 9,
       "duration_s": 10.0,
       "scope": "Actual normal launcher plus 7 pretrained GUI/lifecycle/persistence/offline reuse tests",
-      "log_sha256": "e8943386a55298aedd35587132c942111722741f28d19bb2212868eebebe0cff"
+      "log_sha256": "e8943386a55298aedd35587132c942111722741f28d19bb2212868eebebe0cff",
+      "offline_icons_recheck": {
+        "passed": 8,
+        "duration_s": 6.93,
+        "log_sha256": "6b2a290651aa0fea6e2a5a4a34bf6bde48b49efe30473a9657ab82ef01c50dba"
+      }
+    },
+    "initial_remote_ci": {
+      "run_id": 38071643348,
+      "url": "https://github.com/fdrgsp/cali/actions/runs/38071643348",
+      "tested_revision": "03644e385ba1b616395d6e16c81568a9c1e0dcf7",
+      "platforms": "macos",
+      "scope": "Activation revision; superseded by continuation adding base/optional installed-wheel launcher CI checks"
+    },
+    "base_wheel_launcher": {
+      "torch_and_cascade_absent": true,
+      "passed": 12,
+      "duration_s": 42.7,
+      "warnings_as_errors": true,
+      "log_sha256": "e77ceb669b19ed01aeec19b577c648ec7e81d467d1f49e4b57ef45f2fc943c9c",
+      "exit_code": 0,
+      "host_teardown_note": "macOS PyOpenGL/Vispy dependency emitted a non-fatal deprecated _destroy atexit callback warning after successful pytest completion"
+    },
+    "installed_launcher_ci_coverage": {
+      "base_step_includes_real_launcher": true,
+      "optional_step_includes_real_launcher": true,
+      "explicit_offline_icons": true,
+      "local_base_and_optional_commands_passed": true
     }
   }
 }
