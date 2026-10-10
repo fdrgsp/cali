@@ -772,6 +772,15 @@
       "empty": "/tmp/cali-fresh-catalogue-gui.png",
       "selected": "/tmp/cali-fresh-catalogue-gui-selected.png",
       "reviewed": true
+    },
+    "remote_ci_followup": {
+      "run_id": 38078439881,
+      "url": "https://github.com/fdrgsp/cali/actions/runs/38078439881",
+      "tested_revision": "e2b71464f3c9f0ebd1b11c5945051d4b05147a58",
+      "platforms": "macos",
+      "outcome_pending": true,
+      "scope": "Installed base/optional empty-cache model choices and pretrained GUI acceptance, plus full macOS Python 3.11/3.12/3.13 suites",
+      "preserves_full_platform_run": 38077573810
     }
   }
 }

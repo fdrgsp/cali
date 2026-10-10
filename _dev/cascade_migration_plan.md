@@ -28,6 +28,9 @@
   Rendered fresh-install panels show eight choices at 10 Hz, keep selection
   explicit, and enable Download model when a choice is made. Dedicated wheel CI
   now covers empty-cache 10/30 Hz choices and unsupported-rate guidance.
+- [Fresh-install CI run 38078439881](https://github.com/fdrgsp/cali/actions/runs/38078439881)
+  tests `e2b71464f3c9f0ebd1b11c5945051d4b05147a58` with `platforms=macos`; outcome
+  pending. The separate scope preserves the ongoing full-platform run `38077573810`.
 
 ## Checkout recovery — stale macOS SDK in Python 3.13.0 (2026-10-10)
 
