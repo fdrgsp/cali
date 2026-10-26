@@ -38,9 +38,9 @@ from cali._constants import (
 )
 from cali.extraction._frame_window import (
     build_timing_descriptor,
+    cascade_timing_chunks,
     preflight_retained_timing,
     resolve_initial_frame_window,
-    validate_model_timing,
 )
 from cali.sqlmodel import ExtractionSettings
 from cali.sqlmodel._spike_settings import (
@@ -409,11 +409,19 @@ class _ExtractionGUI(QWidget):
             )
             if "cascade" in self._spike_outputs.methods():
                 # Validate only the retained intervals, as the extraction runner does.
-                validate_model_timing(
+                chunks = cascade_timing_chunks(
                     retained,
                     settings_frame_rate=rate,
                     model_frame_rate=retained.frame_rate_hz or rate,
                 )
+                if len(chunks) > 1:
+                    lines.append(
+                        f"CASCADE will process {len(chunks)} acquisition chunks "
+                        "independently "
+                        f"(frames per chunk: {[b - a for a, b in chunks]}). "
+                        "Each chunk has unavailable model edges; chunks shorter than "
+                        "the model minimum are unavailable. Original timing is kept."
+                    )
         except ValueError as error:
             lines.append(str(error))
         lines.append(

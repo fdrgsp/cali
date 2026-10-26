@@ -18,7 +18,7 @@ from ._trace_migration import migrate_trace_provenance
 if TYPE_CHECKING:
     from sqlalchemy.engine import URL, Engine
 
-SCHEMA_VERSION = 14
+SCHEMA_VERSION = 15
 
 
 def _add_columns(
@@ -224,6 +224,11 @@ def _noise_qc(connection: Connection) -> None:
         )
 
 
+def _acquisition_chunks(connection: Connection) -> None:
+    _add_columns(connection, "spike_trace", (("segments", "JSON"),))
+    _add_columns(connection, "spike_fov_analysis", (("valid_intervals", "JSON"),))
+
+
 _MIGRATIONS = (
     _analysis_gates,
     _startup_discard,
@@ -239,6 +244,7 @@ _MIGRATIONS = (
     _spike_population_coordinates,
     migrate_trace_array_shuffle,
     _noise_qc,
+    _acquisition_chunks,
 )
 
 

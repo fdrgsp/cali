@@ -1030,5 +1030,75 @@
       "scope": "macOS Python 3.11/3.12/3.13, manifest and dedicated installed-wheel Python 3.11/3.13 acceptance including both fresh-cache pretrained GUI cases",
       "ongoing_full_platform_run_preserved": 38085045144
     }
+  },
+  "acquisition_chunks_validation": {
+    "date": "2026-10-26",
+    "schema_version": 15,
+    "scope": "Independent CASCADE inference across recorded acquisition pauses, preserving original non-denoised DFF, timing, validity and offline analysis",
+    "pause_threshold_model_periods": 1.5,
+    "within_chunk_timing_tolerance": 0.01,
+    "interpolation_or_uniform_global_timestamps_used": false,
+    "short_chunks_and_model_edges_unavailable": true,
+    "segments_preserved_in_database_json_exports_and_offline_runner_copies": true,
+    "population_lags_smoothing_and_bursts_bridge_chunks": false,
+    "tests": {
+      "affected_source_regression": {
+        "passed": 597,
+        "skipped": 13,
+        "duration_s": 35.88
+      },
+      "pretrained_source_selection": {
+        "passed": 11,
+        "deselected": 35,
+        "duration_s": 6.25
+      },
+      "chunk_contracts_including_pretrained_cached_equality": {
+        "passed": 7,
+        "duration_s": 2.76
+      }
+    },
+    "actual_evoked_recording": {
+      "path": "tests/test_data/data_and_db_for_tests/evk.tensorstore.zarr",
+      "position": 0,
+      "roi_count": 2,
+      "model_name": "GC8_EXC_10Hz_smoothing150ms_high_noise",
+      "model_manifest_sha256": "f26eb47440322b786505c2b681f2bb83b7bc8b01c425b68aafa834d28331aa3f",
+      "source_frame_count": 153,
+      "chunk_lengths": [
+        3,
+        50,
+        50,
+        50
+      ],
+      "valid_intervals": [
+        [
+          19,
+          37
+        ],
+        [
+          69,
+          87
+        ],
+        [
+          119,
+          137
+        ]
+      ],
+      "valid_samples_per_roi": 54,
+      "devices": [
+        "cpu",
+        "mps"
+      ],
+      "cpu_mps_rtol": 0.0001,
+      "cpu_mps_atol": 1e-05,
+      "cpu_mps_max_absolute_difference": 5.3085386753082275e-08,
+      "private_database_copy_used": true,
+      "user_database_matches_pre_test_bytes": true,
+      "biological_accuracy_or_unobserved_stimulation_activity_validated": false,
+      "local_evidence": "/var/folders/7q/hvm4z3jx7cn7wcxkv2s1w9_80000gn/T/cali-stimulation-chunks-qtimc7mb/results.json",
+      "evidence_sha256": "a3cd7f86746513fbb64aedc59839c2023ea571297b5c6398d26f796110fcbdc8"
+    },
+    "migration_rollback_and_retry_tested": true,
+    "development_activation_or_distribution_licensing_scope_changed": false
   }
 }

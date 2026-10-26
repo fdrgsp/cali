@@ -135,7 +135,9 @@ class SpikePlotData:
         if self.metric is None or self.metric.threshold is None:
             raise ValueError("Spike event plots require an applied threshold.")
         binary, edges = valid_spike_events(self.spike, self.metric.threshold)
-        return np.flatnonzero(edges if onsets else binary) + self.spike.valid_start
+        return np.asarray(self.spike.valid_frame_indices())[
+            np.flatnonzero(edges if onsets else binary)
+        ]
 
 
 def spike_plot_data(
@@ -175,5 +177,5 @@ def spike_plot_data(
         ):
             raise ValueError("Plotted spike thresholds must be finite.")
     values = np.full(len(spike.values), np.nan)
-    values[spike.valid_start : spike.resolved_valid_stop] = valid_spike_values(spike)
+    values[spike.valid_frame_indices()] = valid_spike_values(spike)
     return SpikePlotData(spike, metric, values)

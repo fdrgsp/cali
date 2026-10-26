@@ -64,9 +64,9 @@ def test_cascade_checks_retained_intervals_not_discarded_startup(qtbot: QtBot) -
     widget._metadata_wdg._frame_rate_spin.setValue(10)
     meta = timestamps([0, 200, 300, 400, 500, 600, 700, 800])
     widget.set_source_metadata(("A1", len(meta), meta))
-    assert "requires uniform intervals" in widget._timing_preview.text()
+    assert "2 acquisition chunks" in widget._timing_preview.text()
     widget._trace_extraction_wdg._discard_initial_spin.setValue(1)
-    assert "requires uniform intervals" not in widget._timing_preview.text()
+    assert "acquisition chunks" not in widget._timing_preview.text()
     widget._metadata_wdg._frame_rate_spin.setValue(20)
     assert "does not match extraction settings" in widget._timing_preview.text()
 

@@ -35,18 +35,30 @@ class SpikeComparison:
 
     def values(self, method: SpikeMethod) -> np.ndarray:
         """Return only the common interval, preserving the original amplitudes."""
-        return self._data(method).values[self.valid_start : self.valid_stop]
+        values = self._data(method).values[self.valid_start : self.valid_stop].copy()
+        valid = np.isfinite(
+            self.oasis.values[self.valid_start : self.valid_stop]
+        ) & np.isfinite(self.cascade.values[self.valid_start : self.valid_stop])
+        values[~valid] = np.nan
+        return values
 
     def normalized_values(self, method: SpikeMethod) -> np.ndarray:
         """Scale independently by peak absolute amplitude in the common interval."""
         values = self.values(method)
-        scale = float(np.max(np.abs(values)))
+        scale = float(np.nanmax(np.abs(values)))
         return values / scale if scale else values.copy()
 
     def event_frames(self, method: SpikeMethod) -> np.ndarray:
         """Keep observed onsets, censoring the comparison interval's left boundary."""
         events = self._data(method).event_frames(onsets=True)
-        return events[(events > self.valid_start) & (events < self.valid_stop)]
+        common = np.isfinite(self.oasis.values) & np.isfinite(self.cascade.values)
+        starts = np.flatnonzero(np.diff(np.r_[False, common].astype(int)) == 1)
+        return events[
+            (events > self.valid_start)
+            & (events < self.valid_stop)
+            & common[events]
+            & ~np.isin(events, starts)
+        ]
 
     def _data(self, method: SpikeMethod) -> SpikePlotData:
         if method not in ("oasis", "cascade"):
@@ -104,8 +116,13 @@ def paired_spike_comparison(
         if trace.x_axis_units not in {"ms", "frames"}:
             raise ValueError("Spike comparisons require known time-axis units.")
         interval = 1000 / frame_rate if trace.x_axis_units == "ms" else 1
-        if not np.all(np.isfinite(axis)) or not np.allclose(
-            np.diff(axis), interval, rtol=0.01, atol=1e-6
+        if (
+            not np.all(np.isfinite(axis))
+            or not np.all(np.diff(axis) > 0)
+            or any(
+                not np.allclose(np.diff(axis[a:b]), interval, rtol=0.01, atol=1e-6)
+                for a, b in cascade.spike.valid_intervals
+            )
         ):
             raise ValueError("Compared time axes must match the acquisition rate.")
     start = max(oasis.spike.valid_start, cascade.spike.valid_start)

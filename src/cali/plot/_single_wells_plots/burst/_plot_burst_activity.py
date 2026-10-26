@@ -161,6 +161,11 @@ def _plot_inferred_spike_burst_activity(
     known_origin = child.valid_start is not None
     start = child.valid_start if child.valid_start is not None else 0
     frames = np.arange(start, start + len(activity))
+    if child.valid_intervals:
+        valid = np.zeros(len(activity), dtype=bool)
+        for a, b in child.valid_intervals:
+            valid[a - start : b - start] = True
+        activity[~valid] = np.nan
     if not known_origin:
         plot.setLabel("bottom", "Population Sample Index (Retained Origin Unknown)")
     bounds = spike_burst_bounds(child)
@@ -185,6 +190,9 @@ def _plot_inferred_spike_burst_activity(
     ) -> None:
         if len(values) != len(activity):
             raise ValueError("Raw and smoothed spike populations must align.")
+        if child.valid_intervals:
+            values = np.asarray(values, dtype=float).copy()
+            values[~valid] = np.nan
         item = plot.plot(frames, values, pen=pg.mkPen(color, width=width))
         if legend is not None:
             legend.addItem(item, label)

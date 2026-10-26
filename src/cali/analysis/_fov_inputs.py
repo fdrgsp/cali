@@ -45,6 +45,7 @@ class SpikePopulation:
     valid_stop: int | None = None
     inference_run: SpikeInferenceRun | None = None
     noise: list[float] = field(default_factory=list)
+    valid_intervals: list[tuple[int, int]] | None = None
 
 
 def selected_roi_products(roi: ROI) -> tuple[Traces | None, DataAnalysis | None]:
@@ -211,15 +212,35 @@ def collect_spikes(
     if start >= stop:
         raise ValueError("Spike FOV inputs have no common valid interval.")
     result.valid_start, result.valid_stop = start, stop
+    common = np.ones(stop - start, dtype=bool)
+    for _, spike, _ in selected:
+        mask = np.zeros(len(spike.values), dtype=bool)
+        mask[spike.valid_frame_indices()] = True
+        common &= mask[start:stop]
+    edges = np.diff(np.r_[False, common, False].astype(int))
+    intervals = list(
+        zip(
+            (np.flatnonzero(edges == 1) + start).tolist(),
+            (np.flatnonzero(edges == -1) + start).tolist(),
+        )
+    )
+    if not intervals:
+        raise ValueError("Spike FOV inputs have no common valid samples.")
+    if intervals != [(start, stop)]:
+        result.valid_intervals = intervals
     for label, spike, threshold in selected:
         if label in result.labels:
             raise ValueError("Spike FOV ROI labels must be unique.")
         binary = threshold_spike_train(
             np.asarray(spike.values[start:stop], dtype=float), threshold
         )
+        binary[~common] = 0
         onsets = compute_rising_edges(binary)
         if start > 0 or method == "cascade":
             onsets[0] = 0
+        for a, _ in intervals:
+            if a > start:
+                onsets[a - start] = 0
         result.labels.append(label)
         result.trains.append(binary)
         result.binary[str(label)] = binary.tolist()

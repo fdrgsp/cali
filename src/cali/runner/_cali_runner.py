@@ -1724,6 +1724,7 @@ class CaliRunner:
                             SpikeTrace(
                                 values=list(child.values),
                                 valid_start=child.valid_start,
+                                segments=child.segments,
                                 valid_stop=child.valid_stop,
                                 noise=child.noise,
                                 selected_noise_level=child.selected_noise_level,

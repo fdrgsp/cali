@@ -149,6 +149,8 @@ def export_spike_comparison_to_csv(
                         for index, frame in enumerate(
                             range(pair.valid_start, pair.valid_stop)
                         ):
+                            if not np.isfinite(values[index]):
+                                continue
                             if trace.x_axis is not None and trace.x_axis_units == "ms":
                                 axis_time = trace.x_axis[frame]
                                 retained_time = axis_time - trace.x_axis[0]

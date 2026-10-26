@@ -112,6 +112,7 @@ def _same_payload(copied: Traces, source: Traces) -> bool:
             or original.values != child.values
             or original.valid_start != child.valid_start
             or original.resolved_valid_stop != child.resolved_valid_stop
+            or original.segments != child.segments
         ):
             return False
     return True

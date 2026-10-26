@@ -72,6 +72,9 @@ class SpikeFOVAnalysis(ResultJSON, table=True):  # type: ignore[call-arg, unused
     valid_start: int | None = None
     valid_stop: int | None = None
     frame_rate_hz: float | None = None
+    valid_intervals: list[list[int]] | None = Field(
+        default=None, sa_column=Column(JSON)
+    )
     # CASCADE's model-rate noise scale, separate from calcium/GetSn and spikes/frame.
     # Include inactive ROIs; OASIS spike children leave these fields NULL.
     model_noise_median: float | None = None
@@ -133,6 +136,8 @@ class SpikeFOVAnalysis(ResultJSON, table=True):  # type: ignore[call-arg, unused
         """Require complete, usable coordinates for cropped population arrays."""
         coordinates = (self.valid_start, self.valid_stop, self.frame_rate_hz)
         if all(value is None for value in coordinates):
+            if self.valid_intervals is not None:
+                raise ValueError("FOV valid chunks require population coordinates.")
             return
         start, stop, rate = coordinates
         if (
@@ -146,6 +151,14 @@ class SpikeFOVAnalysis(ResultJSON, table=True):  # type: ignore[call-arg, unused
             raise ValueError(
                 "FOV spike population coordinates must be complete and valid."
             )
+        if self.valid_intervals is not None:
+            previous = start
+            for a, b in self.valid_intervals:
+                if not previous <= a < b <= stop:
+                    raise ValueError(
+                        "FOV valid chunks must be ordered inside their bounds."
+                    )
+                previous = b
         for values in (
             self.spike_population_activity,
             self.spike_population_activity_raw,

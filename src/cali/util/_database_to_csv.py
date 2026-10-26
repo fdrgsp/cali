@@ -1129,9 +1129,8 @@ def _export_trace_data(
                 )
                 binary, _ = valid_spike_events(child, threshold)
                 trace_data = [math.nan] * len(child.values)
-                trace_data[child.valid_start : child.resolved_valid_stop] = (
-                    binary.tolist()
-                )
+                for frame, value in zip(child.valid_frame_indices(), binary.tolist()):
+                    trace_data[frame] = value
             else:
                 attr_name = trace_attr_map.get(trace_type)
                 trace_data = (
@@ -1147,10 +1146,9 @@ def _export_trace_data(
             if trace_type in (INFERRED_SPIKES_TRACES, CASCADE_EXPECTED_SPIKES_TRACES):
                 child = traces.get_spike_trace(spike_method)
                 assert child is not None
+                valid_frames = set(child.valid_frame_indices())
                 trace_data = [
-                    value
-                    if child.valid_start <= index < child.resolved_valid_stop
-                    else math.nan
+                    value if index in valid_frames else math.nan
                     for index, value in enumerate(trace_data)
                 ]
 
@@ -1395,7 +1393,7 @@ def export_events_to_csv(
                 _, onsets = valid_spike_events(spike, child.threshold)
                 starts = np.flatnonzero(onsets)
                 for start in starts:
-                    frame = int(start) + spike.valid_start
+                    frame = spike.valid_frame_indices()[int(start)]
                     row = _coordinate_row(roi, source_trace, frame)
                     row.update(
                         event_type="threshold_excursion_start",
@@ -1500,6 +1498,7 @@ def export_trace_metadata(
                             "valid_stop_frame_exclusive": child.resolved_valid_stop,
                             "noise": child.noise,
                             "selected_noise_level": child.selected_noise_level,
+                            "acquisition_chunks": child.segments,
                         }
                         for child in sorted(
                             trace.spike_traces,

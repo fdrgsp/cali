@@ -1,10 +1,10 @@
-"""Once-per-FOV upstream CASCADE oracle, before any cache or custom windowing."""
+"""Verified upstream CASCADE inference on independent acquisition bursts."""
 
 from __future__ import annotations
 
 import threading
-from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from dataclasses import dataclass, replace
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
@@ -14,7 +14,7 @@ from cali._cascade_models import (
     load_cascade_model,
 )
 from cali._cascade_package import load_cascade_package
-from cali.extraction._frame_window import validate_model_timing
+from cali.extraction._frame_window import cascade_timing_chunks, validate_model_timing
 from cali.logger import cali_logger
 
 from ._base import InferenceCancelled
@@ -46,6 +46,7 @@ class CascadeResult:
     observed_frame_rate: float
     dtype: str = "float32"
     units: str = "spikes/frame"
+    segments: tuple[dict[str, Any], ...] = ()
 
 
 def resolve_cascade_device(package: CascadePackage, requested: str) -> str:
@@ -73,7 +74,7 @@ def resolve_cascade_device(package: CascadePackage, requested: str) -> str:
 
 
 class CascadeReferenceBackend:
-    """Call the pinned upstream predictor once for a validated complete FOV."""
+    """Call the pinned predictor independently for uniformly sampled bursts."""
 
     name = "cascade"
 
@@ -130,9 +131,16 @@ class CascadeReferenceBackend:
             dff < -np.finfo(np.float32).max
         ):
             raise ValueError("CASCADE DFF values must be representable as float32.")
-        valid_start, valid_stop = self.model.valid_interval(dff.shape[1])
         if len(timing.timestamps_ms) != dff.shape[1]:
             raise ValueError("CASCADE timing must match the retained DFF length.")
+        chunks = cascade_timing_chunks(
+            timing,
+            settings_frame_rate=frame_rate,
+            model_frame_rate=self.model.sampling_rate,
+        )
+        if len(chunks) > 1:
+            return self._infer_chunks(dff, frame_rate, timing, chunks, cancel)
+        valid_start, valid_stop = self.model.valid_interval(dff.shape[1])
         observed_rate = validate_model_timing(
             timing,
             settings_frame_rate=frame_rate,
@@ -198,6 +206,77 @@ class CascadeReferenceBackend:
             package.source_manifest_sha256,
             self._resolved_device,
             observed_rate,
+        )
+
+    def _infer_chunks(
+        self,
+        dff: np.ndarray,
+        frame_rate: float,
+        timing: TimingDescriptor,
+        chunks: list[tuple[int, int]],
+        cancel: Callable[[], bool] | None,
+    ) -> CascadeResult:
+        from cali.extraction._frame_window import StartupDiscardError, TimingDescriptor
+
+        predictions = np.zeros(dff.shape, dtype=np.float32)
+        segments = []
+        results = []
+        for start, stop in chunks:
+            if cancel is not None and cancel():
+                raise InferenceCancelled("CASCADE acquisition chunks cancelled.")
+            segment: dict[str, Any] = {
+                "start": start,
+                "stop": stop,
+                "valid_start": None,
+                "valid_stop": None,
+            }
+            if stop - start >= self.minimum_frames:
+                result = self.infer_all(
+                    dff[:, start:stop],
+                    frame_rate,
+                    timing=TimingDescriptor(
+                        timing.timestamps_ms[start:stop], timing.source, timing.trusted
+                    ),
+                    cancel=cancel,
+                )
+                predictions[:, start:stop] = result.spikes
+                segment.update(
+                    valid_start=start + result.valid_start,
+                    valid_stop=start + result.valid_stop,
+                    noise_by_roi=result.noise_by_roi.tolist(),
+                    selected_noise_levels_by_roi=result.selected_noise_levels_by_roi.tolist(),
+                )
+                results.append(result)
+            segments.append(segment)
+        if not results:
+            raise StartupDiscardError(
+                f"No acquisition chunk has the {self.minimum_frames} frames "
+                f"required by {self.model.name}."
+            )
+        noise = np.median([result.noise_by_roi for result in results], axis=0)
+        levels = np.asarray(self.model.noise_levels)
+        selected = levels[np.argmin(np.abs(noise[:, None] - levels[None, :]), axis=1)]
+        cali_logger.info(
+            f"CASCADE: inferred {len(results)} of {len(chunks)} acquisition chunks "
+            f"independently; {len(chunks) - len(results)} short chunks unavailable."
+        )
+        return replace(
+            results[0],
+            spikes=predictions,
+            valid_start=next(
+                s["valid_start"] for s in segments if s["valid_start"] is not None
+            ),
+            valid_stop=next(
+                s["valid_stop"]
+                for s in reversed(segments)
+                if s["valid_stop"] is not None
+            ),
+            noise_by_roi=noise,
+            selected_noise_levels_by_roi=selected,
+            noise_in_model_range=np.all(
+                [r.noise_in_model_range for r in results], axis=0
+            ),
+            segments=tuple(segments),
         )
 
     def _predict(

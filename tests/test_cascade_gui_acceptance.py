@@ -66,6 +66,17 @@ def test_run_button_extracts_and_reanalyzes_offline(
 
 
 @pytest.mark.parametrize("methods", [("cascade",), ("oasis", "cascade")])
+def test_run_button_processes_paused_acquisition_and_reuses_chunk_validity(
+    qtbot: QtBot,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    fake_reference: tuple,
+    methods: tuple,
+) -> None:
+    _exercise_run_button(qtbot, tmp_path, monkeypatch, methods, acquisition_pauses=True)
+
+
+@pytest.mark.parametrize("methods", [("cascade",), ("oasis", "cascade")])
 def test_run_button_routes_missing_model_to_selector(
     qtbot: QtBot,
     tmp_path: Path,
@@ -127,6 +138,25 @@ def test_pretrained_run_button_extracts_and_reanalyzes_offline(
 ) -> None:
     _exercise_run_button(
         qtbot, tmp_path, monkeypatch, ("oasis", "cascade"), pretrained=True
+    )
+
+
+@pytest.mark.skipif(
+    os.environ.get("CALI_CASCADE_REFERENCE_TESTS") != "1",
+    reason="Pretrained acquisition chunks run in the optional installed-wheel job",
+)
+def test_pretrained_run_button_processes_pauses_and_reanalyzes_offline(
+    qtbot: QtBot,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _exercise_run_button(
+        qtbot,
+        tmp_path,
+        monkeypatch,
+        ("oasis", "cascade"),
+        pretrained=True,
+        acquisition_pauses=True,
     )
 
 
@@ -247,12 +277,16 @@ def _exercise_run_button(
     methods: tuple,
     *,
     pretrained: bool = False,
+    acquisition_pauses: bool = False,
     prepare_model: Callable[[CaliGui, str], None] | None = None,
 ) -> None:
     path = tmp_path / "gui.cali"
     _, detection, _, _ = _seed(path, methods, pretrained=pretrained)
     rate = 30 if pretrained else 10
     dataset = _dataset(count=256, rate=rate)
+    if acquisition_pauses:
+        for metadata in dataset.isel.return_value[1][128:]:
+            metadata["runner_time_ms"] += 400
     dataset.position_metadata.return_value = (256, dataset.isel.return_value[1])
     dataset.sequence = Mock()
     dataset.sequence.stage_positions = [Mock()]
@@ -352,6 +386,19 @@ def _exercise_run_button(
             )
         ).all()
         assert {row.method for row in inferences} == set(methods)
+        if acquisition_pauses:
+            for trace in traces:
+                spike = trace.get_spike_trace("cascade")
+                assert spike is not None and spike.segments is not None
+                assert [(s["start"], s["stop"]) for s in spike.segments] == [
+                    (0, 117),
+                    (117, 245),
+                ]
+                assert spike.valid_intervals == [(32, 85), (149, 213)]
+                assert trace.x_axis[117] - trace.x_axis[116] > 400
+        chunk_provenance = [
+            [child.segments for child in trace.spike_traces] for trace in traces
+        ]
         spike_outputs = [
             [
                 (child.inference_run.method, list(child.values))
@@ -412,6 +459,9 @@ def _exercise_run_button(
             select(Traces).where(Traces.analysis_result_id == source_id)
         ).all()
         assert [list(trace.raw_trace) for trace in traces] == before
+        assert [
+            [child.segments for child in trace.spike_traces] for trace in traces
+        ] == chunk_provenance
         assert [
             [
                 (child.inference_run.method, list(child.values))

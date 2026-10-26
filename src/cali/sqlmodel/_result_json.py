@@ -88,6 +88,7 @@ def _validate_snapshot(obj: SQLModel) -> None:
         start, stop = obj.valid_start, obj.resolved_valid_stop
         if not 0 <= start <= stop <= len(obj.values):
             raise ValueError("Spike valid interval must lie within the stored array.")
+        _ = obj.valid_intervals
         method, units = run.method, run.units
     elif isinstance(obj, (SpikeAnalysis, SpikeFOVAnalysis)):
         if isinstance(obj, SpikeFOVAnalysis):

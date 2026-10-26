@@ -135,6 +135,9 @@ class SpikeTrace(ResultJSON, table=True):  # type: ignore[call-arg, unused-ignor
     noise: float | None = None
     selected_noise_level: float | None = None
     ar_coefficients: list[float] | None = Field(default=None, sa_column=Column(JSON))
+    # Per-burst retained bounds, valid edges and ROI noise diagnostics. NULL means
+    # the historical single interval; skipped short chunks have no valid samples.
+    segments: list[dict[str, Any]] | None = Field(default=None, sa_column=Column(JSON))
 
     trace: "Traces" = Relationship(back_populates="spike_traces")
     inference_run: SpikeInferenceRun = Relationship(
@@ -145,6 +148,45 @@ class SpikeTrace(ResultJSON, table=True):  # type: ignore[call-arg, unused-ignor
     def resolved_valid_stop(self) -> int:
         """A nullable stop in imported data means the full stored length."""
         return len(self.values) if self.valid_stop is None else self.valid_stop
+
+    @property
+    def valid_intervals(self) -> list[tuple[int, int]]:
+        if self.segments is None:
+            return [(self.valid_start, self.resolved_valid_stop)]
+        intervals = []
+        previous = 0
+        for segment in self.segments:
+            start, stop = segment["start"], segment["stop"]
+            if any(
+                type(value) is not int for value in (start, stop)
+            ) or not 0 <= previous == start < stop <= len(self.values):
+                raise ValueError(
+                    "Spike chunks must be ordered, non-overlapping bounds."
+                )
+            previous = stop
+            a, b = segment.get("valid_start"), segment.get("valid_stop")
+            if a is None and b is None:
+                continue
+            if type(a) is not int or type(b) is not int or not start <= a < b <= stop:
+                raise ValueError("Valid spike samples must lie inside their chunk.")
+            intervals.append((a, b))
+        if (
+            previous != len(self.values)
+            or not intervals
+            or (
+                intervals[0][0] != self.valid_start
+                or intervals[-1][1] != self.resolved_valid_stop
+            )
+        ):
+            raise ValueError("Spike chunk validity must match the outer valid bounds.")
+        return intervals
+
+    def valid_frame_indices(self) -> list[int]:
+        return [
+            index
+            for start, stop in self.valid_intervals
+            for index in range(start, stop)
+        ]
 
 
 def compatible_inference_provenance(
@@ -319,6 +361,8 @@ def normalize_trace_provenance(session: "Session", *_: Any) -> None:
                 raise ValueError(
                     "Spike valid interval must lie within the stored array."
                 )
+            if obj.segments is not None and not obj.valid_intervals:
+                raise ValueError("Spike chunks require valid samples.")
         elif isinstance(obj, SpikeInferenceRun):
             expected_units = {"oasis": "a.u.", "cascade": "spikes/frame"}
             if (

@@ -308,9 +308,25 @@ def validate_model_timing(
     if timing.source == "runner_time":
         jitter = float(np.max(np.abs(intervals - period)) / period)
         if jitter > relative_tolerance:
+            irregular = np.flatnonzero(
+                np.abs(intervals - period) / period > relative_tolerance
+            )
+            examples = "; ".join(
+                f"{index + 1}→{index + 2}: {intervals[index]:.6g} ms"
+                for index in irregular[:3]
+            )
+            if len(irregular) > 3:
+                examples += f"; {len(irregular) - 3} more"
             raise StartupDiscardError(
                 f"CASCADE requires uniform intervals; maximum interval deviation "
-                f"is {jitter:.2%} (allowed {relative_tolerance:.2%})."
+                f"is {jitter:.2%} (allowed {relative_tolerance:.2%}). "
+                f"Typical interval: {period:.6g} ms ({observed_rate:.6g} Hz). "
+                f"{len(irregular)} of {len(intervals)} intervals exceed the tolerance. "
+                f"Affected retained frame pairs (1-based): {examples}.\n\n"
+                "Check Extract traces → Prepare traces. Acquisition pauses are "
+                "processed as separate chunks, but timing within each chunk must "
+                "match the selected model. Changing the configured frame rate or "
+                "verifying it does not override recorded acquisition timestamps."
             )
     for label, rate in (
         ("extraction settings", settings_frame_rate),
@@ -324,6 +340,61 @@ def validate_model_timing(
                 f"rate {rate:.6g} Hz (allowed {relative_tolerance:.2%})."
             )
     return observed_rate
+
+
+def cascade_timing_chunks(
+    timing: TimingDescriptor,
+    *,
+    settings_frame_rate: float,
+    model_frame_rate: float,
+    minimum_frames: int = 2,
+) -> list[tuple[int, int]]:
+    """Split acquisition pauses, keeping the strict rate check inside each burst.
+
+    A pause must exceed 1.5 model periods. Ordinary jitter remains subject to the
+    existing 1% check; a verified setting never replaces recorded timestamps.
+    Short bursts remain in the plan but cannot contribute inference samples.
+    """
+    if not math.isfinite(model_frame_rate) or model_frame_rate <= 0:
+        raise StartupDiscardError("CASCADE model requires a positive frame rate.")
+    times = np.asarray(timing.timestamps_ms, dtype=float)
+    if (
+        not timing.trusted
+        or timing.source == "exposure"
+        or len(times) < 2
+        or not np.all(np.isfinite(times))
+        or not np.all(np.diff(times) > 0)
+    ):
+        validate_model_timing(
+            timing,
+            settings_frame_rate=settings_frame_rate,
+            model_frame_rate=model_frame_rate,
+        )
+    boundaries = [
+        0,
+        *(np.flatnonzero(np.diff(times) > 1500 / model_frame_rate) + 1).tolist(),
+        len(times),
+    ]
+    chunks = list(zip(boundaries[:-1], boundaries[1:]))
+    for start, stop in chunks:
+        if stop - start < 2:
+            continue
+        validate_model_timing(
+            _describe_timing(
+                timing.timestamps_ms[start:stop],
+                timing.source,
+                timing.trusted,
+                timing.validation,
+            ),
+            settings_frame_rate=settings_frame_rate,
+            model_frame_rate=model_frame_rate,
+        )
+    if not any(stop - start >= minimum_frames for start, stop in chunks):
+        raise StartupDiscardError(
+            f"No acquisition chunk has the {minimum_frames} frames required by "
+            f"this CASCADE model; chunk lengths: {[b - a for a, b in chunks]}."
+        )
+    return chunks
 
 
 @dataclass(frozen=True)

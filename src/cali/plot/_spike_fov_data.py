@@ -60,7 +60,12 @@ def spike_population_duration(
     child.validate_population_coordinates()
     if child.valid_start is not None:
         assert child.valid_stop is not None and child.frame_rate_hz is not None
-        return (child.valid_stop - child.valid_start) / child.frame_rate_hz
+        count = (
+            sum(b - a for a, b in child.valid_intervals)
+            if child.valid_intervals
+            else child.valid_stop - child.valid_start
+        )
+        return count / child.frame_rate_hz
     activity = child.spike_population_activity
     if (
         child.method == "oasis"
@@ -90,4 +95,9 @@ def spike_burst_bounds(child: SpikeFOVAnalysis) -> list[tuple[int, int]]:
             raise ValueError(
                 "Spike bursts must lie within the stored population interval."
             )
+        if child.valid_intervals and any(
+            not any(a <= start < stop <= b for a, b in child.valid_intervals)
+            for start, stop in bounds
+        ):
+            raise ValueError("Spike bursts cannot cross acquisition chunk boundaries.")
     return bounds

@@ -2,9 +2,39 @@
 
 **Branch**: `cascade` (branched from `main` at `336e7b5`)
 **Status**: P1/P2a and prerequisite P2b/P2c implemented; pinned CASCADE package, P4 verified model cache/download CLI, P3a pretrained reference adapter, experimental P3b cached service, and P5 headless runner/persistence/export integration implemented; controlled Step 10 extraction/storage measurements collected and two integration bugs fixed; schema-11 lossless trace-array codec implemented; schema-13 byte-shuffle codec repairs the complete-image storage budget with exact samples; P6a shared ROI calculations, CASCADE ROI metrics, P6b method-bound FOV populations, P6c1 method-aware exports, P6c2a plot registry/ROI consumers, P6c2b population/burst/matrix consumers, P6c2c evoked/sorted/PCA consumers, P6c2d aligned comparisons and P6d full-runner parity/failure isolation implemented; schema-12 population coordinates added; headless CASCADE extraction and spike analysis enabled; controlled full-analysis and 100 × 6000 complete-image measurements with database audits complete, default single-worker FOV startup optimized; versioned byte-shuffle reader/migration and installed-wheel consumer checks complete; schema-14 method-qualified noise QC summaries, exports and advisory batch checks implemented; P8 GUI settings/controls, cancellable background model download, timing-source/resolved-discard previews and stored-results selection implemented and enabled in the normal development launcher; camera-sized single-worker CPU/MPS memory measurements complete; dedicated remote installed-wheel CASCADE CI passed on Python 3.11/3.13 and combined macOS/Windows suites passed on Python 3.11/3.12/3.13; normal development launcher CASCADE extraction enabled with the user-accepted 6 GiB single-worker benchmark profile; distribution licensing review pending; real-plate benchmark and CUDA validation deferred, upstream packaging submission dropped (see Scope decisions, 2026-10-05)
-**Date**: 2026-10-10
+**Date**: 2026-10-26
 
 ---
+
+## Stimulation protocol — independent CASCADE acquisition chunks (2026-10-26)
+
+- The evoked fixture pauses acquisition, stimulates, and starts another camera
+  sequence. Its 153 frames contain bursts of 3/50/50/50 frames; software timestamps
+  and camera frame-number resets identify the boundaries. The user requested
+  automatic independent inference across those stimulation pauses.
+- Intervals longer than 1.5 selected-model periods split acquisition chunks.
+  Within-chunk timing retains the 1% validation. Original non-denoised ΔF/F and
+  timestamps are preserved; neither interpolation nor an assumed uniform global
+  axis is introduced. Each long-enough chunk uses normal reference/cached inference
+  and independent noise selection. Short chunks and each model's context edges
+  remain unavailable, with explicit per-ROI chunk diagnostics.
+- Schema 15 adds nullable chunk metadata to spike traces and population validity
+  intervals. Existing rows retain single-interval semantics; migration preserves
+  stored arrays, rolls back interrupted DDL and supports retry. Offline runner
+  copies, JSON snapshots, source repair, plots and CSV/provenance exports retain
+  internal invalid regions. ROI rates exclude unavailable time; population bursts,
+  smoothing, CCG surrogates and jitter calculations never bridge a chunk boundary.
+- GUI timing previews describe chunk counts/lengths. Run validates selected-source
+  metadata before starting workers; timing failures open Prepare traces with
+  readable guidance while full exception details remain logged. User-selected
+  methods are preserved.
+- Validation includes source regressions, actual pretrained reference/cached
+  equality, GUI extraction/offline reuse, and the exact evoked recording using
+  two saved ROI masks on CPU/MPS. The selected GC8 10 Hz / 32-frame model infers
+  three bursts and skips the initial three frames: valid intervals are
+  `[19,37)`, `[69,87)`, `[119,137)`, totaling 54 samples per ROI. CPU/MPS agree at
+  `rtol=1e-4`, `atol=1e-5`. This is an inference/timing check, not biological
+  validation of activity during unobserved stimulation pauses.
 
 ## P8 acceptance — first-use download through saved reanalysis (2026-10-10)
 

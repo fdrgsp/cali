@@ -159,6 +159,7 @@ def fov_spike_metadata(
         "active_roi_labels": child.active_roi_labels,
         "valid_start_frame_0based": child.valid_start,
         "valid_stop_frame_exclusive": child.valid_stop,
+        "valid_intervals": child.valid_intervals,
         "frame_rate_hz": child.frame_rate_hz,
         "population_coordinate_basis": "retained_relative"
         if child.valid_start is not None
@@ -442,6 +443,11 @@ def export_spike_results_to_csv(
                         else 0
                     )
                     for index in range(size):
+                        if fov_child.valid_intervals and not any(
+                            a <= (fov_child.valid_start or 0) + index < b
+                            for a, b in fov_child.valid_intervals
+                        ):
+                            continue
                         sample_writer.writerow(
                             {
                                 **base,

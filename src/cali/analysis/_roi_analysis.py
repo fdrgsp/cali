@@ -46,7 +46,7 @@ def valid_spike_values(spike: SpikeTrace) -> np.ndarray:
     stop = spike.resolved_valid_stop
     if not 0 <= spike.valid_start < stop <= len(spike.values):
         raise ValueError("Spike analysis requires a nonempty valid interval.")
-    values = np.asarray(spike.values[spike.valid_start : stop], dtype=float)
+    values = np.asarray(spike.values, dtype=float)[spike.valid_frame_indices()]
     if not np.all(np.isfinite(values)):
         raise ValueError("Valid spike samples must be finite.")
     # OASIS can retain tiny negative numerical residuals; preserve legacy inputs.
@@ -67,6 +67,11 @@ def valid_spike_events(
     onsets = compute_rising_edges(binary)
     if spike.valid_start > 0 or spike.inference_run.method == "cascade":
         onsets[0] = 0
+    offset = 0
+    for start, stop in spike.valid_intervals:
+        if offset:
+            onsets[offset] = 0
+        offset += stop - start
     return binary, onsets
 
 

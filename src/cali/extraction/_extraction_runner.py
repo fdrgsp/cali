@@ -41,9 +41,9 @@ from ._frame_window import (
 from ._frame_window import (
     StartupDiscardError,
     build_timing_descriptor,
+    cascade_timing_chunks,
     preflight_retained_timing,
     resolve_initial_frame_window,
-    validate_model_timing,
 )
 from ._neuropil import create_neuropil_from_dilation
 from ._spike_inference import InferenceCancelled, OasisBackend
@@ -568,10 +568,11 @@ class ExtractionRunner:
                 },
             )
             if cascade_backend is not None:
-                validate_model_timing(
+                cascade_timing_chunks(
                     retained_timing,
                     settings_frame_rate=extraction_settings.frame_rate,
                     model_frame_rate=cascade_backend.model.sampling_rate,
+                    minimum_frames=cascade_backend.minimum_frames,
                 )
         except StartupDiscardError as error:
             source = meta[0].get("file_path") if meta else None
@@ -731,7 +732,11 @@ class ExtractionRunner:
             discarded_duration_ms=frame_window.discarded_duration_ms,
             acquisition_frame_rate_hz=retained_timing.frame_rate_hz,
             interval_jitter_fraction=retained_timing.interval_jitter_fraction,
-            timing_validation=retained_timing.validation,
+            timing_validation=(
+                "uniform_acquisition_chunks"
+                if cascade is not None and cascade.segments
+                else retained_timing.validation
+            ),
             provenance_source="extraction",
             schema_version=3,
         )
@@ -811,6 +816,24 @@ class ExtractionRunner:
                                     cascade.selected_noise_levels_by_roi[index]
                                 ),
                                 inference_run=cascade_run,
+                                segments=[
+                                    {
+                                        "start": segment["start"],
+                                        "stop": segment["stop"],
+                                        "valid_start": segment["valid_start"],
+                                        "valid_stop": segment["valid_stop"],
+                                        "noise": segment["noise_by_roi"][index]
+                                        if "noise_by_roi" in segment
+                                        else None,
+                                        "selected_noise_level": segment[
+                                            "selected_noise_levels_by_roi"
+                                        ][index]
+                                        if "selected_noise_levels_by_roi" in segment
+                                        else None,
+                                    }
+                                    for segment in cascade.segments
+                                ]
+                                or None,
                             )
                         ]
                         if cascade_run is not None and cascade is not None

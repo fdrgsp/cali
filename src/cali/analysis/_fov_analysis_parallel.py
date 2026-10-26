@@ -88,6 +88,7 @@ def compute_spike_population(
     name: str,
     parallel: bool,
     n_workers: int,
+    _skip_pairwise: bool = False,
 ) -> SpikeFOVAnalysis:
     """Compute metrics only within one method's common valid interval.
 
@@ -97,6 +98,10 @@ def compute_spike_population(
     settings.validate_parameters()
     if settings.method != population.method:
         raise ValueError("FOV spike settings must match the selected population.")
+    if population.valid_intervals and not _skip_pairwise:
+        from ._segmented_population import compute_segmented_population
+
+        return compute_segmented_population(population, settings, name=name)
     n_rois = len(population.labels)
     n_pairs = n_rois * (n_rois - 1) // 2
     use_parallel = parallel and n_rois >= 10
@@ -124,7 +129,7 @@ def compute_spike_population(
     spike_jitter_sync_matrix_rising_edges = None
     global_spike_jitter_sync_rising_edges = None
 
-    if len(spike_trains) >= 2:
+    if len(spike_trains) >= 2 and not _skip_pairwise:
         max_lag_frames = ms_to_frames(settings.spikes_sync_cross_corr_lag)
         jitter_window_frames = ms_to_frames(settings.spikes_sync_jitter_window)
         n_shuffles = settings.ccg_n_shuffles

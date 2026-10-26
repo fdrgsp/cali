@@ -47,6 +47,13 @@ from cali._constants import (
     WRITERS,
     ZARR_TESNSORSTORE,
 )
+from cali.extraction._frame_window import (
+    StartupDiscardError,
+    build_timing_descriptor,
+    cascade_timing_chunks,
+    preflight_retained_timing,
+    resolve_initial_frame_window,
+)
 from cali.gui._analysis_gui import (
     AnalysisSettingsData,
     CalciumPeaksData,
@@ -1242,6 +1249,51 @@ class CaliGui(QMainWindow):
             return 4  # Extraction Only (require detection)
         return 5  # Analysis Only (require detection and extraction)
 
+    def _preflight_cascade_timing(self, settings: Any, positions: list[int]) -> None:
+        """Check selected acquisition metadata before launching any workers."""
+        if self._data is None or "cascade" not in settings.spike_methods:
+            return
+        for position in positions:
+            count, meta = self._data.position_metadata(position)
+            try:
+                timing = build_timing_descriptor(
+                    meta,
+                    count,
+                    frame_rate=settings.frame_rate,
+                    frame_rate_verified=settings.frame_rate_verified,
+                )
+                window = resolve_initial_frame_window(
+                    discard_value=settings.discard_initial_value,
+                    discard_unit=settings.discard_initial_unit,
+                    frame_rate=settings.frame_rate,
+                    frame_rate_verified=settings.frame_rate_verified,
+                    timing=timing,
+                )
+                retained = preflight_retained_timing(
+                    timing,
+                    window,
+                    frame_rate=settings.frame_rate,
+                    minimum_frames={"OASIS noise estimation": 5},
+                )
+                # The backend independently checks the selected model's rate/length.
+                cascade_timing_chunks(
+                    retained,
+                    settings_frame_rate=settings.frame_rate,
+                    model_frame_rate=settings.frame_rate,
+                )
+            except StartupDiscardError as error:
+                event = meta[0].get(EVENT_KEY, {}) if meta else {}
+                name = event.get("pos_name") or f"Position {position}"
+                raise StartupDiscardError(
+                    f"{name} (position {position}, source {self._data.path}): {error}"
+                ) from error
+
+    def _focus_extraction_timing(self) -> None:
+        self._main_tab.setCurrentWidget(self._detection_extraction_tab)
+        self._sub_tab.setCurrentWidget(self._extraction_tab)
+        self._extraction_wdg._settings_tabs.setCurrentIndex(0)
+        self._extraction_wdg._trace_extraction_wdg._discard_initial_spin.setFocus()
+
     def _check_positions_missing_detection(
         self, detection_settings_id: int, positions: list[int]
     ) -> list[int]:
@@ -1497,6 +1549,9 @@ class CaliGui(QMainWindow):
                 else None
             )
 
+            if value.run_extraction and extraction_settings is not None:
+                self._preflight_cascade_timing(extraction_settings, pos)
+
             if extraction_settings is not None and analysis_settings is not None:
                 from cali._constants import EVOKED
 
@@ -1728,6 +1783,8 @@ class CaliGui(QMainWindow):
                 self._sub_tab.setCurrentWidget(self._extraction_tab)
                 self._extraction_wdg._settings_tabs.setCurrentIndex(1)
                 self._extraction_wdg._spike_outputs._model.setFocus()
+            elif isinstance(e, StartupDiscardError):
+                self._focus_extraction_timing()
             msg = f"❌ Failed to run cali:\n{e}"
             show_error_dialog(self, msg)
             cali_logger.error(msg)
@@ -2060,7 +2117,13 @@ class CaliGui(QMainWindow):
 
         # Also show error dialog to user
         if not self._close_when_run_finishes:
-            show_error_dialog(self, f"❌ Cali Runner Error:\n\n{error_msg}")
+            if isinstance(error, StartupDiscardError):
+                self._focus_extraction_timing()
+                show_error_dialog(
+                    self, f"❌ Cannot use these extraction timings:\n\n{error}"
+                )
+            else:
+                show_error_dialog(self, f"❌ Cali Runner Error:\n\n{error_msg}")
 
     def _on_cali_cancel(self) -> None:
         """Handle cancellation of the runner."""

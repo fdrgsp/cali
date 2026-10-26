@@ -202,7 +202,7 @@ def test_schema_fourteen_preserves_old_metrics_and_leaves_qc_unknown(
     engine = create_cali_engine(f"sqlite:///{path}")
     try:
         with engine.connect() as c:
-            assert c.exec_driver_sql("PRAGMA user_version").scalar() == 14
+            assert c.exec_driver_sql("PRAGMA user_version").scalar() == 15
             assert (
                 c.exec_driver_sql("SELECT calcium_noise FROM data_analysis").scalar()
                 is None
