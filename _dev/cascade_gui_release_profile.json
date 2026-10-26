@@ -1055,6 +1055,21 @@
       "chunk_contracts_including_pretrained_cached_equality": {
         "passed": 7,
         "duration_s": 2.76
+      },
+      "base_installed_wheel": {
+        "passed": 29,
+        "skipped": 1,
+        "duration_s": 63.61
+      },
+      "optional_installed_wheel": {
+        "passed": 24,
+        "skipped": 0,
+        "duration_s": 73.01
+      },
+      "optional_installed_chunk_contracts": {
+        "passed": 7,
+        "skipped": 0,
+        "duration_s": 2.22
       }
     },
     "actual_evoked_recording": {
@@ -1099,6 +1114,16 @@
       "evidence_sha256": "a3cd7f86746513fbb64aedc59839c2023ea571297b5c6398d26f796110fcbdc8"
     },
     "migration_rollback_and_retry_tested": true,
-    "development_activation_or_distribution_licensing_scope_changed": false
+    "development_activation_or_distribution_licensing_scope_changed": false,
+    "wheel": "cali-0.1.dev1450+gfe79dcf7-py3-none-any.whl",
+    "wheel_sha256": "d59dee4d274e47eef874333006f7876695b344e47f1decf9affbb781014081e8",
+    "wheel_revision": "fe79dcf7",
+    "clean_committed_export_used_for_build": true,
+    "local_debug_startup_paths_excluded": true,
+    "source_wheel_and_both_installed_python_yaml_files_equal": 129,
+    "base_torch_and_cascade_absent": true,
+    "exact_workflow_base_and_optional_gui_commands_used": true,
+    "visual_preview_reviewed": true,
+    "visual_preview": "/tmp/cali-chunks-timing-preview.png"
   }
 }

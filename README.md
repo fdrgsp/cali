@@ -267,7 +267,7 @@ is long enough, extraction stops with the required length.
 Saved results retain each chunk's bounds, valid frames and noise/model selection.
 Plots show unavailable frames as gaps and CSV spike exports leave them empty.
 CASCADE rates use valid observed samples only, excluding pauses and invalid edges;
-threshold excursion starts are censored at each new valid interval. Population
+threshold excursion starts are censored at each new valid interval. CASCADE population
 bursts and smoothing are computed within chunks. CCGs pool within-chunk
 coincidences with per-trigger weights and independently shifted chunk surrogates;
 jitter synchrony is weighted by valid chunk length. No lag or burst bridges a

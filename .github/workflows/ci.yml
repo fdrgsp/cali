@@ -66,6 +66,7 @@ jobs:
         run: >-
           .cascade-smoke/bin/python -I -Werror -m pytest --noconftest -q
           tests/test_cascade_base_install.py
+          tests/test_cascade_acquisition_chunks.py
           tests/test_cascade_package_loader.py
           tests/test_cli.py::test_gui_launch_enables_cascade_single_worker_profile
           tests/test_cascade_gui.py::test_install_instructions_target_current_environment_and_pin

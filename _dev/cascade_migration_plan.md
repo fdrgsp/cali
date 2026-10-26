@@ -35,6 +35,14 @@
   `[19,37)`, `[69,87)`, `[119,137)`, totaling 54 samples per ROI. CPU/MPS agree at
   `rtol=1e-4`, `atol=1e-5`. This is an inference/timing check, not biological
   validation of activity during unobserved stimulation pauses.
+- Source regression: **597 passed, 13 skipped in 35.88 s**; pretrained source
+  selection: **11 passed in 6.25 s**; chunk contracts including cached/reference
+  equality: **7 passed in 2.76 s**. The committed clean-export wheel passed
+  **29 base tests, 1 skipped**, **24 optional GUI tests** and **7 optional chunk
+  contracts**. All 129 Python/YAML files match the export, wheel and both installed
+  copies. The actual source timing preview was rendered and reviewed; hooks pass.
+  Local GUI debug startup paths were excluded from the wheel and commit, and the
+  user's original database bytes were preserved after private-copy validation.
 
 ## P8 acceptance — first-use download through saved reanalysis (2026-10-10)
 
