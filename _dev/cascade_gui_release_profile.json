@@ -957,9 +957,9 @@
       "url": "https://github.com/fdrgsp/cali/actions/runs/38085045144",
       "tested_revision": "01cc30dcbd495b174e84f6611d6563a9e6b51bdf",
       "platforms": "all",
-      "outcome_pending": true,
+      "outcome_pending": false,
       "scope": "Full macOS/Windows Python 3.11/3.12/3.13 and installed base/optional cache-state, action-layout and pretrained GUI acceptance checks",
-      "status": "in_progress",
+      "status": "completed",
       "dedicated_jobs": {
         "3.11": {
           "job_id": 114309698122,
@@ -978,7 +978,8 @@
           "log_sha256": "58a2cc461968a1b33e985e6fcadbbfbf3da3f720035bf51a1d2c383b78808b60"
         }
       },
-      "dedicated_jobs_passed": true
+      "dedicated_jobs_passed": true,
+      "conclusion": "success"
     }
   },
   "first_use_gui_workflow_validation": {
@@ -1025,10 +1026,11 @@
       "url": "https://github.com/fdrgsp/cali/actions/runs/38085698742",
       "tested_revision": "3f32021352913ed9df35a36e72279caf01ed304e",
       "platforms": "macos",
-      "status": "queued",
-      "outcome_pending": true,
+      "status": "completed",
+      "outcome_pending": false,
       "scope": "macOS Python 3.11/3.12/3.13, manifest and dedicated installed-wheel Python 3.11/3.13 acceptance including both fresh-cache pretrained GUI cases",
-      "ongoing_full_platform_run_preserved": 38085045144
+      "ongoing_full_platform_run_preserved": 38085045144,
+      "conclusion": "success"
     }
   },
   "acquisition_chunks_validation": {
@@ -1124,6 +1126,15 @@
     "base_torch_and_cascade_absent": true,
     "exact_workflow_base_and_optional_gui_commands_used": true,
     "visual_preview_reviewed": true,
-    "visual_preview": "/tmp/cali-chunks-timing-preview.png"
+    "visual_preview": "/tmp/cali-chunks-timing-preview.png",
+    "remote_ci_followup": {
+      "run_id": 40371580154,
+      "url": "https://github.com/fdrgsp/cali/actions/runs/40371580154",
+      "tested_revision": "963cff9c8bb99f070d99c3fb54699c84a54a4e23",
+      "platforms": "all",
+      "status": "in_progress",
+      "outcome_pending": true,
+      "scope": "macOS/Windows Python 3.11/3.12/3.13 plus dedicated installed base/optional CASCADE jobs on Python 3.11/3.13"
+    }
   }
 }
