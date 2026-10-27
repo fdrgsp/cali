@@ -50,7 +50,7 @@ from cali._constants import (
 from cali.extraction._frame_window import (
     StartupDiscardError,
     build_timing_descriptor,
-    cascade_timing_chunks,
+    cascade_inference_timing,
     preflight_retained_timing,
     resolve_initial_frame_window,
 )
@@ -1276,7 +1276,7 @@ class CaliGui(QMainWindow):
                     minimum_frames={"OASIS noise estimation": 5},
                 )
                 # The backend independently checks the selected model's rate/length.
-                cascade_timing_chunks(
+                cascade_inference_timing(
                     retained,
                     settings_frame_rate=settings.frame_rate,
                     model_frame_rate=settings.frame_rate,

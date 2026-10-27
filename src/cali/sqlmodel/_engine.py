@@ -18,7 +18,7 @@ from ._trace_migration import migrate_trace_provenance
 if TYPE_CHECKING:
     from sqlalchemy.engine import URL, Engine
 
-SCHEMA_VERSION = 15
+SCHEMA_VERSION = 16
 
 
 def _add_columns(
@@ -229,6 +229,22 @@ def _acquisition_chunks(connection: Connection) -> None:
     _add_columns(connection, "spike_fov_analysis", (("valid_intervals", "JSON"),))
 
 
+def _configured_cascade_fps(connection: Connection) -> None:
+    _add_columns(
+        connection,
+        "extraction_settings",
+        (("cascade_timing_version", "INTEGER DEFAULT 1 NOT NULL"),),
+    )
+    _add_columns(
+        connection,
+        "spike_inference_run",
+        (
+            ("inference_frame_rate_hz", "FLOAT"),
+            ("timing_policy", "VARCHAR"),
+        ),
+    )
+
+
 _MIGRATIONS = (
     _analysis_gates,
     _startup_discard,
@@ -245,6 +261,7 @@ _MIGRATIONS = (
     migrate_trace_array_shuffle,
     _noise_qc,
     _acquisition_chunks,
+    _configured_cascade_fps,
 )
 
 

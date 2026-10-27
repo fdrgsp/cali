@@ -12,7 +12,11 @@ from cali._constants import RUNNER_TIME_KEY
 
 DiscardInitialUnit = Literal["frames", "seconds"]
 TimingSource = Literal[
-    "runner_time", "metadata_frame_period", "exposure", "user_verified"
+    "runner_time",
+    "metadata_frame_period",
+    "exposure",
+    "user_verified",
+    "configured_fps",
 ]
 
 
@@ -323,10 +327,8 @@ def validate_model_timing(
                 f"Typical interval: {period:.6g} ms ({observed_rate:.6g} Hz). "
                 f"{len(irregular)} of {len(intervals)} intervals exceed the tolerance. "
                 f"Affected retained frame pairs (1-based): {examples}.\n\n"
-                "Check Extract traces → Prepare traces. Acquisition pauses are "
-                "processed as separate chunks, but timing within each chunk must "
-                "match the selected model. Changing the configured frame rate or "
-                "verifying it does not override recorded acquisition timestamps."
+                "Check Extract traces → Prepare traces and the configured "
+                "acquisition rate."
             )
     for label, rate in (
         ("extraction settings", settings_frame_rate),
@@ -342,59 +344,40 @@ def validate_model_timing(
     return observed_rate
 
 
-def cascade_timing_chunks(
+def cascade_inference_timing(
     timing: TimingDescriptor,
     *,
     settings_frame_rate: float,
     model_frame_rate: float,
-    minimum_frames: int = 2,
-) -> list[tuple[int, int]]:
-    """Split acquisition pauses, keeping the strict rate check inside each burst.
+) -> TimingDescriptor:
+    """Use configured FPS on acquired frame indices, ignoring acquisition pauses.
 
-    A pause must exceed 1.5 model periods. Ordinary jitter remains subject to the
-    existing 1% check; a verified setting never replaces recorded timestamps.
-    Short bursts remain in the plan but cannot contribute inference samples.
+    The original descriptor is never changed. Validate its nominal acquisition
+    rate and timestamp integrity, then use a uniformly spaced inference axis.
     """
-    if not math.isfinite(model_frame_rate) or model_frame_rate <= 0:
-        raise StartupDiscardError("CASCADE model requires a positive frame rate.")
-    times = np.asarray(timing.timestamps_ms, dtype=float)
-    if (
-        not timing.trusted
-        or timing.source == "exposure"
-        or len(times) < 2
-        or not np.all(np.isfinite(times))
-        or not np.all(np.diff(times) > 0)
-    ):
+    if not timing.trusted or timing.source == "exposure":
         validate_model_timing(
             timing,
             settings_frame_rate=settings_frame_rate,
             model_frame_rate=model_frame_rate,
         )
-    boundaries = [
-        0,
-        *(np.flatnonzero(np.diff(times) > 1500 / model_frame_rate) + 1).tolist(),
-        len(times),
-    ]
-    chunks = list(zip(boundaries[:-1], boundaries[1:]))
-    for start, stop in chunks:
-        if stop - start < 2:
-            continue
-        validate_model_timing(
-            _describe_timing(
-                timing.timestamps_ms[start:stop],
-                timing.source,
-                timing.trusted,
-                timing.validation,
-            ),
-            settings_frame_rate=settings_frame_rate,
-            model_frame_rate=model_frame_rate,
-        )
-    if not any(stop - start >= minimum_frames for start, stop in chunks):
-        raise StartupDiscardError(
-            f"No acquisition chunk has the {minimum_frames} frames required by "
-            f"this CASCADE model; chunk lengths: {[b - a for a, b in chunks]}."
-        )
-    return chunks
+    nominal = TimingDescriptor(timing.timestamps_ms, "configured_fps", timing.trusted)
+    validate_model_timing(
+        nominal,
+        settings_frame_rate=settings_frame_rate,
+        model_frame_rate=model_frame_rate,
+    )
+    return TimingDescriptor(
+        [
+            frame * 1000.0 / settings_frame_rate
+            for frame in range(len(timing.timestamps_ms))
+        ],
+        "configured_fps",
+        True,
+        settings_frame_rate,
+        None,
+        "configured_fps",
+    )
 
 
 @dataclass(frozen=True)

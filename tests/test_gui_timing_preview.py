@@ -58,15 +58,17 @@ def test_exposure_is_untrusted_until_user_verifies_rate(qtbot: QtBot) -> None:
     assert "Discard 6 frames; retain 94" in widget._timing_preview.text()
 
 
-def test_cascade_checks_retained_intervals_not_discarded_startup(qtbot: QtBot) -> None:
+def test_cascade_preview_uses_configured_fps_across_acquisition_pauses(
+    qtbot: QtBot,
+) -> None:
     widget = _ExtractionGUI(cascade_enabled=True)
     qtbot.addWidget(widget)
     widget._metadata_wdg._frame_rate_spin.setValue(10)
     meta = timestamps([0, 200, 300, 400, 500, 600, 700, 800])
     widget.set_source_metadata(("A1", len(meta), meta))
-    assert "2 acquisition chunks" in widget._timing_preview.text()
+    assert "10 fps across all retained frames" in widget._timing_preview.text()
     widget._trace_extraction_wdg._discard_initial_spin.setValue(1)
-    assert "acquisition chunks" not in widget._timing_preview.text()
+    assert "do not split predictions" in widget._timing_preview.text()
     widget._metadata_wdg._frame_rate_spin.setValue(20)
     assert "does not match extraction settings" in widget._timing_preview.text()
 

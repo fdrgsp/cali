@@ -38,7 +38,7 @@ from cali._constants import (
 )
 from cali.extraction._frame_window import (
     build_timing_descriptor,
-    cascade_timing_chunks,
+    cascade_inference_timing,
     preflight_retained_timing,
     resolve_initial_frame_window,
 )
@@ -409,19 +409,18 @@ class _ExtractionGUI(QWidget):
             )
             if "cascade" in self._spike_outputs.methods():
                 # Validate only the retained intervals, as the extraction runner does.
-                chunks = cascade_timing_chunks(
+                cascade_inference_timing(
                     retained,
                     settings_frame_rate=rate,
-                    model_frame_rate=retained.frame_rate_hz or rate,
+                    model_frame_rate=rate,
                 )
-                if len(chunks) > 1:
-                    lines.append(
-                        f"CASCADE will process {len(chunks)} acquisition chunks "
-                        "independently "
-                        f"(frames per chunk: {[b - a for a, b in chunks]}). "
-                        "Each chunk has unavailable model edges; chunks shorter than "
-                        "the model minimum are unavailable. Original timing is kept."
-                    )
+                lines.append(
+                    f"CASCADE inference: {rate:g} fps across all retained frames. "
+                    "Acquisition pauses do not split predictions. "
+                    "Model edge exclusions "
+                    "apply only at the recording start and end. Recorded timestamps "
+                    "remain available for source coordinates."
+                )
         except ValueError as error:
             lines.append(str(error))
         lines.append(

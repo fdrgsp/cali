@@ -359,7 +359,9 @@ def test_new_writes_deduplicate_provenance_and_leave_old_columns_empty() -> None
             )
             with pytest.raises(IntegrityError):
                 connection.exec_driver_sql(
-                    "INSERT INTO spike_trace SELECT NULL, trace_id, "
+                    "INSERT INTO spike_trace (trace_id, spike_inference_run_id, "
+                    '"values", valid_start, valid_stop, noise, '
+                    "selected_noise_level, ar_coefficients) SELECT trace_id, "
                     'spike_inference_run_id, "values", valid_start, valid_stop, '
                     "noise, selected_noise_level, ar_coefficients "
                     "FROM spike_trace LIMIT 1"

@@ -133,7 +133,7 @@ def test_invalid_inputs_never_call_upstream(
 
 
 @pytest.mark.parametrize(
-    "case", ["length", "exposure", "irregular", "rate", "settings"]
+    "case", ["length", "exposure", "nonmonotonic", "rate", "settings"]
 )
 def test_invalid_timing_never_calls_upstream(case: str, fake_reference: tuple) -> None:
     backend, _, calls = fake_reference
@@ -143,8 +143,8 @@ def test_invalid_timing_never_calls_upstream(case: str, fake_reference: tuple) -
         timing = _timing(count=95)
     elif case == "exposure":
         timing = TimingDescriptor(timing.timestamps_ms, "exposure", False)
-    elif case == "irregular":
-        timing.timestamps_ms[10] += 10
+    elif case == "nonmonotonic":
+        timing.timestamps_ms[10] = timing.timestamps_ms[9]
     elif case == "rate":
         timing = _timing(rate=11)
     else:

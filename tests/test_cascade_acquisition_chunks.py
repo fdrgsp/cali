@@ -1,4 +1,4 @@
-"""Acquisition pauses are boundaries, never synthetic model samples or silence."""
+"""Fixed-FPS inference across pauses and compatibility with saved chunked runs."""
 
 import json
 import os
@@ -10,6 +10,7 @@ import numpy as np
 import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.engine import Connection
+from sqlmodel import Session
 
 from cali.analysis._fov_analysis_parallel import compute_spike_population
 from cali.analysis._fov_inputs import SpikePopulation
@@ -18,19 +19,22 @@ from cali.extraction._frame_window import (
     StartupDiscardError,
     TimingDescriptor,
     build_timing_descriptor,
-    cascade_timing_chunks,
+    cascade_inference_timing,
 )
 from cali.plot._spike_data import spike_plot_data
 from cali.plot._spike_fov_data import spike_burst_bounds, spike_population_duration
+from cali.runner import CaliRunner
 from cali.sqlmodel import (
     DataAnalysis,
     ExtractionFrameWindow,
+    ExtractionSettings,
     SpikeAnalysisSettings,
     SpikeInferenceRun,
     SpikeTrace,
     Traces,
     _engine,
     create_cali_engine,
+    create_database_and_tables,
 )
 
 from .test_cascade_reference import fake_reference as fake_reference
@@ -44,7 +48,7 @@ def _paused_timing() -> TimingDescriptor:
     )
 
 
-def test_evoked_recording_splits_at_its_three_recorded_stimulation_pauses() -> None:
+def test_evoked_recording_uses_one_fixed_fps_sequence_across_pauses() -> None:
     path = (
         Path(__file__).parent
         / "test_data/data_and_db_for_tests/evk.tensorstore.zarr/.zattrs"
@@ -52,42 +56,118 @@ def test_evoked_recording_splits_at_its_three_recorded_stimulation_pauses() -> N
     rows = json.loads(path.read_text())["frame_metadatas"]
     rows = [row for row in rows if row["mda_event"]["index"]["p"] == 0]
     timing = build_timing_descriptor(rows, 153)
-    assert cascade_timing_chunks(
-        timing, settings_frame_rate=10, model_frame_rate=10, minimum_frames=33
-    ) == [(0, 3), (3, 53), (53, 103), (103, 153)]
+    inference = cascade_inference_timing(
+        timing, settings_frame_rate=10, model_frame_rate=10
+    )
+    assert inference.timestamps_ms == [frame * 100 for frame in range(153)]
+    assert inference.source == "configured_fps"
+    assert max(np.diff(timing.timestamps_ms)) > 500
+    assert timing.timestamps_ms != inference.timestamps_ms
 
 
-def test_pauses_split_bursts_but_jitter_and_rate_errors_still_fail() -> None:
+def test_pauses_and_jitter_use_configured_fps_but_rate_errors_still_fail() -> None:
     timing = _paused_timing()
-    assert cascade_timing_chunks(
-        timing, settings_frame_rate=10, model_frame_rate=10, minimum_frames=65
-    ) == [(0, 96), (96, 192)]
     jittered = replace(timing, timestamps_ms=timing.timestamps_ms.copy())
     jittered.timestamps_ms[20] += 2
-    with pytest.raises(StartupDiscardError, match="uniform intervals"):
-        cascade_timing_chunks(jittered, settings_frame_rate=10, model_frame_rate=10)
-    with pytest.raises(StartupDiscardError, match="extraction settings"):
-        cascade_timing_chunks(timing, settings_frame_rate=20, model_frame_rate=10)
-    with pytest.raises(StartupDiscardError, match="No acquisition chunk"):
-        cascade_timing_chunks(
-            timing, settings_frame_rate=10, model_frame_rate=10, minimum_frames=100
+    for source in (timing, jittered):
+        inference = cascade_inference_timing(
+            source, settings_frame_rate=10, model_frame_rate=10
         )
+        assert inference.timestamps_ms == [frame * 100 for frame in range(192)]
+    with pytest.raises(StartupDiscardError, match="extraction settings"):
+        cascade_inference_timing(timing, settings_frame_rate=20, model_frame_rate=10)
+    with pytest.raises(StartupDiscardError, match="CASCADE model"):
+        cascade_inference_timing(timing, settings_frame_rate=10, model_frame_rate=20)
 
 
-def test_independent_predictions_mask_edges_count_only_valid_time_and_plot_gaps(
-    fake_reference: tuple,
-) -> None:
+def test_paused_predictions_use_one_complete_sequence(fake_reference: tuple) -> None:
     backend, _, calls = fake_reference
-    result = backend.infer_all(
-        np.random.default_rng(22).normal(0, 0.1, (2, 192)), 10, timing=_paused_timing()
-    )
-    assert sum(call[0] == "predict" for call in calls) == 2
-    assert [(s["start"], s["stop"]) for s in result.segments] == [(0, 96), (96, 192)]
+    values = np.random.default_rng(22).normal(0, 0.1, (2, 192))
+    original = values.copy()
+    result = backend.infer_all(values, 10, timing=_paused_timing())
+    assert sum(call[0] == "predict" for call in calls) == 1
+    assert result.segments == ()
+    assert (result.valid_start, result.valid_stop) == (32, 160)
+    np.testing.assert_array_equal(result.spikes[:, 32:160], 0.25)
+    np.testing.assert_array_equal(values, original)
+
+
+def test_fixed_fps_reextraction_does_not_reuse_chunked_settings(tmp_path: Path) -> None:
+    engine = create_cali_engine(f"sqlite:///{tmp_path / 'identity.cali'}")
+    create_database_and_tables(engine)
+    with Session(engine) as session:
+        legacy = ExtractionSettings(
+            spike_methods=("cascade",),
+            cascade_model="Test_10Hz",
+            cascade_timing_version=1,
+        )
+        session.add(legacy)
+        session.commit()
+        session.refresh(legacy)
+        legacy_id = legacy.id
+        requested = ExtractionSettings(
+            spike_methods=("cascade",), cascade_model="Test_10Hz"
+        )
+        assert requested != legacy
+        assert hash(requested) != hash(legacy)
+        runner = CaliRunner()
+        current = runner._get_or_create_extraction_settings(session, requested)
+        assert current.id != legacy_id
+        assert current.cascade_timing_version == 2
+        assert (
+            runner._get_or_create_extraction_settings(session, legacy).id == current.id
+        )
+        assert legacy.cascade_timing_version == 1
+        assert (
+            runner._get_or_create_extraction_settings(session, legacy_id).id
+            == legacy_id
+        )
+    engine.dispose()
+
+
+def test_schema_sixteen_adds_policy_without_relabeling_legacy_inference(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "schema15.cali"
+    engine = create_engine(f"sqlite:///{path}")
+    with engine.begin() as connection:
+        connection.exec_driver_sql(
+            "CREATE TABLE extraction_settings (id INTEGER PRIMARY KEY)"
+        )
+        connection.exec_driver_sql("INSERT INTO extraction_settings VALUES (1)")
+        connection.exec_driver_sql(
+            "CREATE TABLE spike_inference_run (id INTEGER PRIMARY KEY)"
+        )
+        connection.exec_driver_sql("INSERT INTO spike_inference_run VALUES (1)")
+        connection.exec_driver_sql("PRAGMA user_version=15")
+    engine.dispose()
+    engine = create_cali_engine(f"sqlite:///{path}")
+    with engine.connect() as connection:
+        assert (
+            connection.exec_driver_sql(
+                "SELECT cascade_timing_version FROM extraction_settings"
+            ).scalar()
+            == 1
+        )
+        assert connection.exec_driver_sql(
+            "SELECT inference_frame_rate_hz, timing_policy FROM spike_inference_run"
+        ).one() == (None, None)
+        assert connection.exec_driver_sql("PRAGMA user_version").scalar() == 16
+    engine.dispose()
+
+
+def test_legacy_chunked_predictions_keep_their_saved_valid_regions() -> None:
+    values = np.zeros(192)
+    values[32:64] = values[128:160] = 0.25
+    segments = [
+        {"start": 0, "stop": 96, "valid_start": 32, "valid_stop": 64},
+        {"start": 96, "stop": 192, "valid_start": 128, "valid_stop": 160},
+    ]
     spike = SpikeTrace(
-        values=result.spikes[0].tolist(),
-        valid_start=result.valid_start,
-        valid_stop=result.valid_stop,
-        segments=list(result.segments),
+        values=values.tolist(),
+        valid_start=32,
+        valid_stop=160,
+        segments=segments,
         inference_run=SpikeInferenceRun(
             method="cascade",
             units="spikes/frame",
@@ -129,7 +209,7 @@ def test_independent_predictions_mask_edges_count_only_valid_time_and_plot_gaps(
     assert restored.valid_intervals == spike.valid_intervals
 
 
-def test_short_initial_chunk_is_unavailable_and_no_sample_is_interpolated(
+def test_short_initial_burst_is_not_a_separate_chunk_and_no_sample_is_interpolated(
     fake_reference: tuple,
 ) -> None:
     backend, _, calls = fake_reference
@@ -140,11 +220,11 @@ def test_short_initial_chunk_is_unavailable_and_no_sample_is_interpolated(
     original = data.copy()
     result = backend.infer_all(data, 10, timing=timing)
     assert result.spikes.shape == data.shape
-    assert result.segments[0]["valid_start"] is None
-    assert result.segments[1]["valid_start"] == 35
+    assert result.segments == ()
+    assert (result.valid_start, result.valid_stop) == (32, 67)
     assert sum(call[0] == "predict" for call in calls) == 1
     np.testing.assert_array_equal(data, original)
-    np.testing.assert_array_equal(result.spikes[:, :35], 0)
+    np.testing.assert_array_equal(result.spikes[:, :32], 0)
 
 
 def test_population_bursts_and_ccg_never_bridge_internal_invalid_regions() -> None:
@@ -219,7 +299,7 @@ def test_schema_fifteen_preserves_arrays_and_rolls_back_before_retry(
     old.dispose()
     upgraded = create_cali_engine(f"sqlite:///{path}")
     with upgraded.connect() as connection:
-        assert connection.exec_driver_sql("PRAGMA user_version").scalar() == 15
+        assert connection.exec_driver_sql("PRAGMA user_version").scalar() == 16
         assert connection.exec_driver_sql(
             "SELECT value, segments FROM spike_trace"
         ).one() == (b"\x01\x02\x03\x04", None)

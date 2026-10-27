@@ -337,7 +337,7 @@ def test_component_preflight_happens_before_reading_images_or_oasis(
 
 
 @pytest.mark.parametrize(
-    "failure", ["exposure", "irregular", "recording_rate", "short_crop"]
+    "failure", ["exposure", "nonmonotonic", "recording_rate", "short_crop"]
 )
 def test_model_timing_and_length_preflight_happens_before_roi_work(
     failure: str,
@@ -348,8 +348,8 @@ def test_model_timing_and_length_preflight_happens_before_roi_work(
     data, meta = dataset.isel.return_value
     if failure == "exposure":
         meta = [{"exposure_ms": 100} for _ in meta]
-    elif failure == "irregular":
-        meta[40]["runner_time_ms"] += 20
+    elif failure == "nonmonotonic":
+        meta[40]["runner_time_ms"] = meta[39]["runner_time_ms"]
     elif failure == "short_crop":
         settings.discard_initial_value = 64
     dataset.isel.return_value = (data, meta)

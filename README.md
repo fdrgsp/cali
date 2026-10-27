@@ -255,30 +255,24 @@ acquisition rate; exposure alone is insufficient. Selected backend failures prop
 and a FOV stores neither spike output when its inference or finalization fails.
 CASCADE CSV exports leave invalid model edges empty and include stored provenance.
 
-Recordings that pause imaging for stimulation are processed automatically as
-independent acquisition chunks. A recorded interval longer than 1.5 model frame
-periods starts a new chunk; timing inside each chunk must still match the model
-within 1%. CASCADE receives the original non-denoised ΔF/F for each chunk, without
-interpolation or joining across the pause. Original timestamps and source frames
-are preserved. Each chunk gets its own noise estimate and model edge exclusions;
-chunks shorter than the selected model's minimum are marked unavailable. If none
-is long enough, extraction stops with the required length.
+CASCADE uses the configured FPS across the complete retained sequence of acquired
+frames, including stimulation experiments that pause acquisition. Pauses do not
+split inference or introduce additional model edges. No frames are interpolated,
+inserted or removed: the original non-denoised ΔF/F matrix is passed to the model
+once per FOV. The configured FPS must match the model and nominal acquisition
+rate. This timing behavior is automatic, with no mode selector.
 
-Saved results retain each chunk's bounds, valid frames and noise/model selection.
-Plots show unavailable frames as gaps and CSV spike exports leave them empty.
-CASCADE rates use valid observed samples only, excluding pauses and invalid edges;
-threshold excursion starts are censored at each new valid interval. CASCADE population
-bursts and smoothing are computed within chunks. CCGs pool within-chunk
-coincidences with per-trigger weights and independently shifted chunk surrogates;
-jitter synchrony is weighted by valid chunk length. No lag or burst bridges a
-pause. Summary CASCADE ROI noise is the median across inferred chunks; individual
-chunk diagnostics remain in the exported provenance. Offline reanalysis uses these
-stored boundaries without loading the model.
+Actual acquisition timestamps and source coordinates remain stored unchanged.
+Inference provenance separately records `timing_policy="configured_fps"` and the
+FPS used for predictions and CASCADE rate metrics. Model edges are excluded only
+at the start and end of the retained recording. For the 32-frame model used by the
+153-frame evoked example, this leaves one valid interval `[16, 137)` (121 frames).
 
-For example, a 32-frame model at 10 Hz needs at least 33 frames in a chunk and
-excludes 16 frames at either end. A 50-frame burst therefore has 18 valid prediction
-frames. Activity during stimulation pauses and near chunk boundaries cannot be
-recovered from the missing imaging data.
+Schema 16 distinguishes new fixed-FPS extractions from older chunked results, so
+rerunning extraction creates fresh predictions. Existing saved predictions and
+chunk validity remain readable; analysis-only reuse retains their original
+semantics. Restart the GUI and rerun extraction to regenerate an older run using
+the current timing behavior.
 
 Spike arrays use a versioned, checksummed, lossless compressed BLOB format while
 Python accessors and JSON snapshots continue to expose numeric lists. Opening an

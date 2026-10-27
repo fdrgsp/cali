@@ -1,10 +1,37 @@
 # Adding CASCADE spike inference to `cali`
 
 **Branch**: `cascade` (branched from `main` at `336e7b5`)
-**Status**: P1/P2a and prerequisite P2b/P2c implemented; pinned CASCADE package, P4 verified model cache/download CLI, P3a pretrained reference adapter, experimental P3b cached service, and P5 headless runner/persistence/export integration implemented; controlled Step 10 extraction/storage measurements collected and two integration bugs fixed; schema-11 lossless trace-array codec implemented; schema-13 byte-shuffle codec repairs the complete-image storage budget with exact samples; P6a shared ROI calculations, CASCADE ROI metrics, P6b method-bound FOV populations, P6c1 method-aware exports, P6c2a plot registry/ROI consumers, P6c2b population/burst/matrix consumers, P6c2c evoked/sorted/PCA consumers, P6c2d aligned comparisons and P6d full-runner parity/failure isolation implemented; schema-12 population coordinates added; headless CASCADE extraction and spike analysis enabled; controlled full-analysis and 100 × 6000 complete-image measurements with database audits complete, default single-worker FOV startup optimized; versioned byte-shuffle reader/migration and installed-wheel consumer checks complete; schema-14 method-qualified noise QC summaries, exports and advisory batch checks implemented; schema-15 independent CASCADE acquisition chunks, internal validity intervals and gap-safe analysis implemented; P8 GUI settings/controls, cancellable background model download, timing-source/resolved-discard previews and stored-results selection implemented and enabled in the normal development launcher; camera-sized single-worker CPU/MPS memory measurements complete; dedicated remote installed-wheel CASCADE CI passed on Python 3.11/3.13 and combined macOS/Windows suites passed on Python 3.11/3.12/3.13; normal development launcher CASCADE extraction enabled with the user-accepted 6 GiB single-worker benchmark profile; distribution licensing review pending; real-plate benchmark and CUDA validation deferred, upstream packaging submission dropped (see Scope decisions, 2026-10-05)
-**Date**: 2026-10-26
+**Status**: P1/P2a and prerequisite P2b/P2c implemented; pinned CASCADE package, P4 verified model cache/download CLI, P3a pretrained reference adapter, experimental P3b cached service, and P5 headless runner/persistence/export integration implemented; controlled Step 10 extraction/storage measurements collected and two integration bugs fixed; schema-11 lossless trace-array codec implemented; schema-13 byte-shuffle codec repairs the complete-image storage budget with exact samples; P6a shared ROI calculations, CASCADE ROI metrics, P6b method-bound FOV populations, P6c1 method-aware exports, P6c2a plot registry/ROI consumers, P6c2b population/burst/matrix consumers, P6c2c evoked/sorted/PCA consumers, P6c2d aligned comparisons and P6d full-runner parity/failure isolation implemented; schema-12 population coordinates added; headless CASCADE extraction and spike analysis enabled; controlled full-analysis and 100 × 6000 complete-image measurements with database audits complete, default single-worker FOV startup optimized; versioned byte-shuffle reader/migration and installed-wheel consumer checks complete; schema-14 method-qualified noise QC summaries, exports and advisory batch checks implemented; schema-15 legacy chunk validity retained; schema-16 automatic configured-FPS CASCADE inference across acquisition pauses implemented; P8 GUI settings/controls, cancellable background model download, timing-source/resolved-discard previews and stored-results selection implemented and enabled in the normal development launcher; camera-sized single-worker CPU/MPS memory measurements complete; dedicated remote installed-wheel CASCADE CI passed on Python 3.11/3.13 and combined macOS/Windows suites passed on Python 3.11/3.12/3.13; normal development launcher CASCADE extraction enabled with the user-accepted 6 GiB single-worker benchmark profile; distribution licensing review pending; real-plate benchmark and CUDA validation deferred, upstream packaging submission dropped (see Scope decisions, 2026-10-05)
+**Date**: 2026-10-27
 
 ---
+
+## Stimulation protocol — configured FPS across pauses (2026-10-27)
+
+- Supersedes automatic chunking below at the user's explicit request. CASCADE now
+  uses the same configured FPS across all retained acquired frames, without a GUI
+  option or per-stimulation split. Raw non-denoised ΔF/F, frame count and original
+  acquisition timestamps remain unchanged; no interpolation is performed.
+- The model sees one complete FOV sequence and only its normal outer context
+  edges are unavailable. GUI previews describe configured-FPS inference. Nominal
+  rate/model compatibility and timestamp integrity remain checked.
+- Schema 16 stores inference FPS/policy separately from observed acquisition
+  timing and versions CASCADE extraction identity. New extraction requests do not
+  silently reuse older chunked traces; saved chunked runs and analysis-only reuse
+  retain their original provenance and valid intervals. Dual-backend comparisons
+  accept the preserved real timestamp gaps when inference uses configured FPS.
+- Source regression: **642 passed, 14 skipped in 39.36 s**. Focused pretrained,
+  GUI/offline reuse, migration/identity and comparison checks: **77 passed in
+  11.34 s**. Actual desktop-database snapshots were re-extracted privately using
+  all four ROIs on CPU and MPS. Both created fresh settings/results, preserved old
+  predictions and acquisition timestamps, and produced one `[16,137)` valid region
+  (121 samples) instead of the previous 54 samples. The desktop database was
+  opened read-only; no original predictions were overwritten.
+- The preceding chunk CI had successful dedicated CASCADE jobs but failed the
+  full suites on one schema-dependent uniqueness test: an INSERT omitted column
+  names after `spike_trace` gained a column. The test now names its legacy columns
+  explicitly and again checks the intended unique constraint (**12 provenance
+  tests passed**). No scientific values or inference thresholds were changed.
 
 ## Stimulation protocol — independent CASCADE acquisition chunks (2026-10-26)
 

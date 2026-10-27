@@ -1132,9 +1132,64 @@
       "url": "https://github.com/fdrgsp/cali/actions/runs/40371580154",
       "tested_revision": "963cff9c8bb99f070d99c3fb54699c84a54a4e23",
       "platforms": "all",
-      "status": "in_progress",
-      "outcome_pending": true,
-      "scope": "macOS/Windows Python 3.11/3.12/3.13 plus dedicated installed base/optional CASCADE jobs on Python 3.11/3.13"
+      "status": "completed",
+      "outcome_pending": false,
+      "scope": "macOS/Windows Python 3.11/3.12/3.13 plus dedicated installed base/optional CASCADE jobs on Python 3.11/3.13",
+      "conclusion": "failure",
+      "failure": "Schema-dependent uniqueness test inserted nine positional values into the extended spike_trace table; fixed using explicit column names and validated locally."
+    }
+  },
+  "configured_fps_validation": {
+    "date": "2026-10-27",
+    "schema_version": 16,
+    "scope": "Configured FPS across every retained acquired frame without stimulation chunking or a user mode selector",
+    "original_dff_and_acquisition_timestamps_preserved": true,
+    "interpolated_inserted_or_removed_frames": false,
+    "internal_model_edges_introduced_at_pauses": false,
+    "stored_inference_timing_policy": "configured_fps",
+    "inference_fps_stored_separately_from_acquisition_rate": true,
+    "new_extraction_identity_version": 2,
+    "legacy_chunked_extractions_reused_for_new_extraction_requests": false,
+    "legacy_runs_readable_and_analysis_only_provenance_preserved": true,
+    "tests": {
+      "affected_source_regression": {
+        "passed": 642,
+        "skipped": 14,
+        "duration_s": 39.36
+      },
+      "pretrained_gui_identity_migration_and_comparison": {
+        "passed": 77,
+        "duration_s": 11.34
+      },
+      "provenance_uniqueness_regression": {
+        "passed": 12,
+        "duration_s": 1.76
+      }
+    },
+    "actual_recording": {
+      "path": "tests/test_data/data_and_db_for_tests/evk.tensorstore.zarr",
+      "source_database": "Desktop/test_db.cali (read-only snapshots)",
+      "position": 0,
+      "roi_count": 4,
+      "model_name": "GC8_EXC_10Hz_smoothing150ms_high_noise",
+      "inference_fps": 10,
+      "valid_interval": [
+        16,
+        137
+      ],
+      "valid_samples_per_roi": 121,
+      "previous_valid_samples_per_roi": 54,
+      "fresh_extraction_settings_and_result_created": true,
+      "original_timestamps_and_old_spikes_preserved": true,
+      "devices": [
+        "cpu",
+        "mps"
+      ],
+      "cpu_mps_rtol": 0.0001,
+      "cpu_mps_atol": 1e-05,
+      "cpu_mps_max_absolute_difference": 2.384185791015625e-07,
+      "local_evidence": "/var/folders/7q/hvm4z3jx7cn7wcxkv2s1w9_80000gn/T/cali-fixed-fps-actual-6st_0yii/results.json",
+      "evidence_sha256": "5af80471a8a308f24a836378df76b6dbb0632de5587f9d224738a95df3965ef7"
     }
   }
 }

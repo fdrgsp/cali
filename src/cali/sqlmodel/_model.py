@@ -1079,6 +1079,9 @@ class ExtractionSettings(_ValidatedSettings, table=True):
     )
     cascade_model: str | None = None
     cascade_device: str = "auto"
+    # Internal extraction identity: older CASCADE results used timestamp chunks.
+    # This is not a user-selectable inference mode.
+    cascade_timing_version: int = 2
     pixel_size: float | None = None  # pixel size in micrometers (µm)
 
     threads: int = Field(default=1)
@@ -1135,6 +1138,10 @@ class ExtractionSettings(_ValidatedSettings, table=True):
             and self.spike_methods == other.spike_methods
             and self.cascade_model == other.cascade_model
             and self.cascade_device == other.cascade_device
+            and (
+                "cascade" not in self.spike_methods
+                or self.cascade_timing_version == other.cascade_timing_version
+            )
             and self.pixel_size == other.pixel_size
             and self.threads == other.threads
         )
@@ -1156,6 +1163,9 @@ class ExtractionSettings(_ValidatedSettings, table=True):
                 self.spike_methods,
                 self.cascade_model,
                 self.cascade_device,
+                self.cascade_timing_version
+                if "cascade" in self.spike_methods
+                else None,
                 self.pixel_size,
                 self.threads,
             )

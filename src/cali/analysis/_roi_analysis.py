@@ -82,7 +82,13 @@ def cascade_acquisition_rate(
     run = spike.inference_run
     trace = source_trace if source_trace is not None else spike.trace
     window = trace.extraction_frame_window if trace is not None else None
-    rate = window.acquisition_frame_rate_hz if window is not None else None
+    rate = (
+        run.inference_frame_rate_hz
+        if run.timing_policy == "configured_fps"
+        else window.acquisition_frame_rate_hz
+        if window is not None
+        else None
+    )
     model_rate = run.model_sampling_rate_hz
     if (
         rate is None

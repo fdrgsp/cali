@@ -41,7 +41,7 @@ from ._frame_window import (
 from ._frame_window import (
     StartupDiscardError,
     build_timing_descriptor,
-    cascade_timing_chunks,
+    cascade_inference_timing,
     preflight_retained_timing,
     resolve_initial_frame_window,
 )
@@ -568,11 +568,10 @@ class ExtractionRunner:
                 },
             )
             if cascade_backend is not None:
-                cascade_timing_chunks(
+                cascade_inference_timing(
                     retained_timing,
                     settings_frame_rate=extraction_settings.frame_rate,
                     model_frame_rate=cascade_backend.model.sampling_rate,
-                    minimum_frames=cascade_backend.minimum_frames,
                 )
         except StartupDiscardError as error:
             source = meta[0].get("file_path") if meta else None
@@ -732,11 +731,7 @@ class ExtractionRunner:
             discarded_duration_ms=frame_window.discarded_duration_ms,
             acquisition_frame_rate_hz=retained_timing.frame_rate_hz,
             interval_jitter_fraction=retained_timing.interval_jitter_fraction,
-            timing_validation=(
-                "uniform_acquisition_chunks"
-                if cascade is not None and cascade.segments
-                else retained_timing.validation
-            ),
+            timing_validation=retained_timing.validation,
             provenance_source="extraction",
             schema_version=3,
         )
@@ -760,6 +755,8 @@ class ExtractionRunner:
                 resolved_device=cascade.resolved_device,
                 dtype=cascade.dtype,
                 model_sampling_rate_hz=cascade.model.sampling_rate,
+                inference_frame_rate_hz=extraction_settings.frame_rate,
+                timing_policy="configured_fps",
                 smoothing_sigma=cascade.model.smoothing,
                 kernel_type="causal" if cascade.model.causal_kernel else "acausal",
                 provenance_source=(

@@ -1555,6 +1555,17 @@ class CaliRunner:
         """Get existing or create new ExtractionSettings in database."""
         from cali.sqlmodel._model import ExtractionSettings
 
+        if (
+            isinstance(extraction_settings, ExtractionSettings)
+            and "cascade" in extraction_settings.spike_methods
+            and extraction_settings.cascade_timing_version != 2
+        ):
+            extraction_settings = ExtractionSettings(
+                **extraction_settings.model_dump(
+                    exclude={"id", "created_at", "cascade_timing_version"}
+                )
+            )
+
         return cast(
             "ExtractionSettings",
             self._resolve_settings(

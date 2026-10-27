@@ -116,12 +116,16 @@ def paired_spike_comparison(
         if trace.x_axis_units not in {"ms", "frames"}:
             raise ValueError("Spike comparisons require known time-axis units.")
         interval = 1000 / frame_rate if trace.x_axis_units == "ms" else 1
+        fixed_fps = cascade.spike.inference_run.timing_policy == "configured_fps"
         if (
             not np.all(np.isfinite(axis))
             or not np.all(np.diff(axis) > 0)
-            or any(
-                not np.allclose(np.diff(axis[a:b]), interval, rtol=0.01, atol=1e-6)
-                for a, b in cascade.spike.valid_intervals
+            or (
+                not fixed_fps
+                and any(
+                    not np.allclose(np.diff(axis[a:b]), interval, rtol=0.01, atol=1e-6)
+                    for a, b in cascade.spike.valid_intervals
+                )
             )
         ):
             raise ValueError("Compared time axes must match the acquisition rate.")

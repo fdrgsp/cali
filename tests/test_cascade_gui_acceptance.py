@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING, Any
 from unittest.mock import Mock
 from zipfile import ZipFile
 
+import numpy as np
 import pytest
 from qtpy.QtCore import Qt, QTimer
 from qtpy.QtWidgets import QStyle, QStyleOptionGroupBox
@@ -24,6 +25,7 @@ from cali.gui._extraction_gui import (
     MetadataData,
     TraceExtractionData,
 )
+from cali.plot._spike_comparison import paired_spike_comparison
 from cali.sqlmodel import (
     CaliResult,
     SpikeAnalysisSettings,
@@ -66,7 +68,7 @@ def test_run_button_extracts_and_reanalyzes_offline(
 
 
 @pytest.mark.parametrize("methods", [("cascade",), ("oasis", "cascade")])
-def test_run_button_processes_paused_acquisition_and_reuses_chunk_validity(
+def test_run_button_processes_paused_acquisition_and_reuses_fixed_fps_validity(
     qtbot: QtBot,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -389,13 +391,15 @@ def _exercise_run_button(
         if acquisition_pauses:
             for trace in traces:
                 spike = trace.get_spike_trace("cascade")
-                assert spike is not None and spike.segments is not None
-                assert [(s["start"], s["stop"]) for s in spike.segments] == [
-                    (0, 117),
-                    (117, 245),
-                ]
-                assert spike.valid_intervals == [(32, 85), (149, 213)]
+                assert spike is not None and spike.segments is None
+                assert spike.valid_intervals == [(32, 213)]
+                assert spike.inference_run.timing_policy == "configured_fps"
+                assert spike.inference_run.inference_frame_rate_hz == rate
                 assert trace.x_axis[117] - trace.x_axis[116] > 400
+                if "oasis" in methods:
+                    pair = paired_spike_comparison(trace, roi_label=1)
+                    assert pair is not None
+                    assert np.all(np.isfinite(pair.values("cascade")))
         chunk_provenance = [
             [child.segments for child in trace.spike_traces] for trace in traces
         ]
