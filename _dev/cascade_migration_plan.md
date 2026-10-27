@@ -32,6 +32,10 @@
   names after `spike_trace` gained a column. The test now names its legacy columns
   explicitly and again checks the intended unique constraint (**12 provenance
   tests passed**). No scientific values or inference thresholds were changed.
+- The clean committed wheel passed **32 base tests, 1 skipped in 8.12 s**,
+  **24 optional GUI tests in 16.10 s** and **22 optional timing/provenance tests
+  in 3.23 s**. All 129 Python/YAML files match the export, wheel and both installed
+  copies. Dedicated CI now includes the provenance uniqueness regression.
 
 ## Stimulation protocol — independent CASCADE acquisition chunks (2026-10-26)
 

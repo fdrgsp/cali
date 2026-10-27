@@ -1164,6 +1164,21 @@
       "provenance_uniqueness_regression": {
         "passed": 12,
         "duration_s": 1.76
+      },
+      "base_installed_wheel": {
+        "passed": 32,
+        "skipped": 1,
+        "duration_s": 8.12
+      },
+      "optional_installed_gui": {
+        "passed": 24,
+        "skipped": 0,
+        "duration_s": 16.1
+      },
+      "optional_installed_timing_and_provenance": {
+        "passed": 22,
+        "skipped": 0,
+        "duration_s": 3.23
       }
     },
     "actual_recording": {
@@ -1190,6 +1205,13 @@
       "cpu_mps_max_absolute_difference": 2.384185791015625e-07,
       "local_evidence": "/var/folders/7q/hvm4z3jx7cn7wcxkv2s1w9_80000gn/T/cali-fixed-fps-actual-6st_0yii/results.json",
       "evidence_sha256": "5af80471a8a308f24a836378df76b6dbb0632de5587f9d224738a95df3965ef7"
-    }
+    },
+    "wheel": "cali-0.1.dev1453+g90e8a372-py3-none-any.whl",
+    "wheel_sha256": "bd1225b07c614b730f18abd6643246f016da1d0a0b4955761d63145250c659c1",
+    "wheel_revision": "90e8a372e4222467afc7fab3701b81bdb574977a",
+    "clean_committed_export_used": true,
+    "source_wheel_and_both_installed_python_yaml_files_equal": 129,
+    "base_torch_and_cascade_absent": true,
+    "exact_workflow_base_and_optional_gui_commands_used": true
   }
 }
