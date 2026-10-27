@@ -1212,6 +1212,14 @@
     "clean_committed_export_used": true,
     "source_wheel_and_both_installed_python_yaml_files_equal": 129,
     "base_torch_and_cascade_absent": true,
-    "exact_workflow_base_and_optional_gui_commands_used": true
+    "exact_workflow_base_and_optional_gui_commands_used": true,
+    "remote_ci_followup": {
+      "run_id": 40587069312,
+      "url": "https://github.com/fdrgsp/cali/actions/runs/40587069312",
+      "tested_revision": "82d1101767ce360ee6bbc98abded3ab92f0dd131",
+      "platforms": "all",
+      "status": "in_progress",
+      "outcome_pending": true
+    }
   }
 }

@@ -37,6 +37,11 @@
   in 3.23 s**. All 129 Python/YAML files match the export, wheel and both installed
   copies. Dedicated CI now includes the provenance uniqueness regression.
 
+- [Configured-FPS CI run 40587069312](https://github.com/fdrgsp/cali/actions/runs/40587069312)
+  tests `82d1101767ce360ee6bbc98abded3ab92f0dd131` with `platforms=all`; outcome
+  pending. It covers all macOS/Windows Python suites and dedicated base/optional
+  installed-wheel checks.
+
 ## Stimulation protocol — independent CASCADE acquisition chunks (2026-10-26)
 
 - The evoked fixture pauses acquisition, stimulates, and starts another camera
